@@ -1,0 +1,4 @@
+name = "FrequencyMaxwell"
+uuid = "89bf6b0d-b02f-4c76-8a5d-868ec9be6234"
+authors = ["Dohyeon Lee <dleh428@kaist.ac.kr>"]
+version = "0.1.0"
