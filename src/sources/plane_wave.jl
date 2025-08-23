@@ -168,7 +168,7 @@ For a plane wave with polarization E₀ and wave vector k:
 
 where Z₀ is the impedance of free space and k₀ = 2π/λ.
 """
-function generate_incident_fields(
+function _generate_incident_fields_arrays(
     source::PlaneWaveSource{T},
     grid_config
 ) where T<:AbstractFloat
@@ -264,4 +264,30 @@ function Base.show(io::IO, source::PlaneWaveSource{T}) where T
     print(io, "\n  amplitude: $(source.amplitude)")
     print(io, "\n  phase: $(source.phase)")
     print(io, "\n  power density: $(source_power(source))")
+end
+
+"""
+    generate_incident_fields(source::PlaneWaveSource, grid_config) -> ElectromagneticField
+
+Generate incident plane wave fields and return as an ElectromagneticField object.
+
+This is a convenience wrapper around the lower-level field generation function
+that returns a properly structured ElectromagneticField object.
+"""
+function generate_incident_fields(
+    source::PlaneWaveSource{T},
+    grid_config
+) where T<:AbstractFloat
+    
+    # Generate field arrays
+    E_field, H_field = _generate_incident_fields_arrays(source, grid_config)
+    
+    # Create ElectromagneticField object
+    return ElectromagneticField(
+        E_field,
+        H_field,
+        grid_config.grid_size,
+        grid_config.resolution,
+        source.wavelength
+    )
 end

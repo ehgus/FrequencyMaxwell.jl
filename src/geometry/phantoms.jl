@@ -240,9 +240,9 @@ end
 
 """
     phantom_cylinder(grid_size::NTuple{3, Int},
-                     permittivity::Number,
-                     radius_pixel::Real,
-                     height_pixel::Real;
+                     permittivity_profile::AbstractVector{<:Number},
+                     radius_pixel::Real;
+                     height_pixel::Real = 2 * radius_pixel,
                      axis::Int = 3,
                      array_type::Type{<:AbstractArray} = Array) -> AbstractArray{Complex{T}, 3}
 
@@ -250,9 +250,9 @@ Generate a phantom containing a cylindrical scatterer.
 
 # Arguments
 - `grid_size::NTuple{3, Int}`: Grid dimensions
-- `permittivity::Number`: Cylinder permittivity
+- `permittivity_profile::AbstractVector{<:Number}`: Cylinder permittivity values (typically length 1)
 - `radius_pixel::Real`: Cylinder radius in pixels
-- `height_pixel::Real`: Cylinder height in pixels  
+- `height_pixel::Real = 2 * radius_pixel`: Cylinder height in pixels  
 - `axis::Int = 3`: Cylinder axis direction (1=X, 2=Y, 3=Z)
 - `array_type::Type{<:AbstractArray} = Array`: Array type for output
 
@@ -261,9 +261,9 @@ Generate a phantom containing a cylindrical scatterer.
 """
 function phantom_cylinder(
     grid_size::NTuple{3, Int},
-    permittivity::Number,
-    radius_pixel::Real,
-    height_pixel::Real;
+    permittivity_profile::AbstractVector{<:Number},
+    radius_pixel::Real;
+    height_pixel::Real = 2 * radius_pixel,
     axis::Int = 3,
     array_type::Type{<:AbstractArray} = Array
 )
@@ -272,14 +272,17 @@ function phantom_cylinder(
     radius_pixel > 0 || throw(ArgumentError("radius_pixel must be positive"))
     height_pixel > 0 || throw(ArgumentError("height_pixel must be positive"))
     1 ≤ axis ≤ 3 || throw(ArgumentError("axis must be 1, 2, or 3"))
+    !isempty(permittivity_profile) || throw(ArgumentError("permittivity_profile cannot be empty"))
     
     # Determine output type
-    T = real(eltype(promote_type(typeof(permittivity), typeof(radius_pixel))))
+    T = real(eltype(promote_type(eltype(permittivity_profile), typeof(radius_pixel))))
     T <: AbstractFloat || (T = Float64)
     
     # Initialize phantom
     phantom = array_type(ones(Complex{T}, grid_size))
-    cyl_permittivity = Complex{T}(permittivity)
+    
+    # Get cylinder permittivity (use first value from profile)
+    cyl_permittivity = Complex{T}(permittivity_profile[1])
     
     # Get grid center
     center = ntuple(i -> (grid_size[i] + 1) / 2, 3)
@@ -294,12 +297,6 @@ function phantom_cylinder(
     
     return phantom
 end
-
-"""
-    _fill_cylinder!(phantom, center, radius, axis_start, axis_end, axis, permittivity)
-
-Internal helper to fill cylindrical region efficiently.
-"""
 function _fill_cylinder!(
     phantom::AbstractArray{Complex{T}, 3},
     center::NTuple{3, Real},

@@ -265,3 +265,6 @@ using FrequencyMaxwell
         end
     end
 end
+
+# Include example integration tests
+include("test_examples.jl")
