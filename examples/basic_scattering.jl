@@ -72,39 +72,33 @@ function main()
     println("\nSolving electromagnetic scattering...")
     println("Note: This is a placeholder implementation")
     
-    try
-        E_field, H_field = solve(solver, source, phantom)
-        
-        # Wrap fields in structured container
-        fields = ElectromagneticField(E_field, H_field, config.grid_size, 
-                                    config.resolution, config.wavelength)
-        
-        println("Solution completed successfully!")
-        println("Field properties:")
-        println("  Electric field size: $(size(fields.E))")
-        println("  Magnetic field size: $(size(fields.H))")
-        println("  Total field energy: $(field_energy(fields)) J")
-        
-        # Calculate field intensity
-        intensity = field_intensity(fields)
-        max_intensity = maximum(intensity)
-        enhancement = max_intensity / 1.0  # Relative to incident intensity
-        
-        println("  Maximum intensity: $(max_intensity) (V/m)²")
-        println("  Enhancement factor: $(round(enhancement, digits=2))")
-        
-        # Extract central plane for analysis
-        central_plane = extract_plane(fields, 3, div(config.grid_size[3], 2))
-        plane_intensity = field_intensity(central_plane)
-        
-        println("Central plane analysis:")
-        println("  Plane size: $(size(plane_intensity))")
-        println("  Mean intensity: $(round(sum(plane_intensity)/length(plane_intensity), digits=4))")
-        
-    catch e
-        println("Error during solution: $e")
-        println("This is expected with the placeholder implementation")
-    end
+    E_field, H_field = solve(solver, source, phantom)
+    
+    # Wrap fields in structured container
+    fields = ElectromagneticField(E_field, H_field, config.grid_size, 
+                                config.resolution, config.wavelength)
+    
+    println("Solution completed successfully!")
+    println("Field properties:")
+    println("  Electric field size: $(size(fields.E))")
+    println("  Magnetic field size: $(size(fields.H))")
+    println("  Total field energy: $(field_energy(fields)) J")
+    
+    # Calculate field intensity
+    intensity = field_intensity(fields)
+    max_intensity = maximum(intensity)
+    enhancement = max_intensity / 1.0  # Relative to incident intensity
+    
+    println("  Maximum intensity: $(max_intensity) (V/m)²")
+    println("  Enhancement factor: $(round(enhancement, digits=2))")
+    
+    # Extract central plane for analysis
+    central_plane = extract_plane(fields, 3, div(config.grid_size[3], 2))
+    plane_intensity = field_intensity(central_plane)
+    
+    println("Central plane analysis:")
+    println("  Plane size: $(size(plane_intensity))")
+    println("  Mean intensity: $(round(sum(plane_intensity)/length(plane_intensity), digits=4))")
     
     println("\nExample completed successfully!")
     println("This demonstrates the basic FrequencyMaxwell workflow:")
