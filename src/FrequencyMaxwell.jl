@@ -26,7 +26,6 @@ using FrequencyMaxwell
 # Configure solver
 config = ConvergentBornConfig(
     wavelength = 500e-9,
-    NA = 1.4,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32)

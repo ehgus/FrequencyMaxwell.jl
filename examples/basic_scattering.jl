@@ -15,7 +15,6 @@ function main()
     println("Setting up solver configuration...")
     config = ConvergentBornConfig(
         wavelength = 500e-9,      # 500 nm (green light)
-        NA = 1.4,                 # High numerical aperture
         permittivity_bg = 1.33^2, # Water background (n=1.33)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (128, 128, 64),          # 128×128×64 grid
@@ -24,7 +23,6 @@ function main()
     
     println("Configuration:")
     println("  Wavelength: $(config.wavelength * 1e9) nm")
-    println("  NA: $(config.NA)")
     println("  Background n: $(sqrt(config.permittivity_bg))")
     println("  Grid size: $(config.grid_size)")
     println("  Resolution: $(config.resolution .* 1e9) nm")

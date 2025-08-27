@@ -7,14 +7,12 @@ using FrequencyMaxwell
             # Test basic construction
             config = ConvergentBornConfig(
                 wavelength = 500e-9,
-                NA = 1.4,
                 permittivity_bg = 1.33^2,
                 resolution = (50e-9, 50e-9, 50e-9),
                 grid_size = (128, 128, 32)
             )
             
             @test config.wavelength ≈ 500e-9
-            @test config.NA ≈ 1.4
             @test config.permittivity_bg ≈ 1.33^2
             @test config.resolution == (50e-9, 50e-9, 50e-9)
             @test config.grid_size == (128, 128, 32)
@@ -22,14 +20,12 @@ using FrequencyMaxwell
             # Test validation
             @test_throws ArgumentError ConvergentBornConfig(
                 wavelength = -1.0,  # Invalid
-                NA = 1.4,
                 resolution = (50e-9, 50e-9, 50e-9),
                 grid_size = (128, 128, 32)
             )
             
             @test_throws ArgumentError ConvergentBornConfig(
                 wavelength = 500e-9,
-                NA = 3.0,  # Invalid (> 2)
                 resolution = (50e-9, 50e-9, 50e-9),
                 grid_size = (128, 128, 32)
             )
@@ -38,7 +34,6 @@ using FrequencyMaxwell
         @testset "Configuration Utilities" begin
             config = ConvergentBornConfig(
                 wavelength = 500e-9,
-                NA = 1.4,
                 resolution = (50e-9, 50e-9, 100e-9),
                 grid_size = (64, 64, 32)
             )
@@ -148,7 +143,6 @@ using FrequencyMaxwell
         @testset "Domain Calculations" begin
             config = ConvergentBornConfig(
                 wavelength = 633e-9,
-                NA = 1.2,
                 permittivity_bg = 1.0,
                 resolution = (100e-9, 100e-9, 200e-9),
                 grid_size = (50, 60, 25)
@@ -174,7 +168,6 @@ using FrequencyMaxwell
             # Configuration matching the original example (scaled down)
             config = ConvergentBornConfig(
                 wavelength = 532e-9,  # 532 nm green laser
-                NA = 1.2,
                 permittivity_bg = 1.333^2,  # Water
                 resolution = (100e-9, 100e-9, 100e-9),  # 100 nm resolution  
                 grid_size = (51, 51, 48)  # Smaller than original 201x201x191
@@ -209,7 +202,6 @@ using FrequencyMaxwell
             
             config = ConvergentBornConfig(
                 wavelength = 355e-9,  # UV wavelength
-                NA = 1.0,
                 permittivity_bg = 1.4338^2,  # PDMS background
                 resolution = (20e-9, 20e-9, 20e-9),  # 20 nm resolution
                 grid_size = (21, 50, 50)  # Smaller than original
@@ -239,7 +231,6 @@ using FrequencyMaxwell
             
             config = ConvergentBornConfig(
                 wavelength = 532e-9,
-                NA = 1.2, 
                 permittivity_bg = 1.333^2,
                 resolution = (200e-9, 200e-9, 200e-9),  # Coarser resolution
                 grid_size = (21, 21, 16)  # Very small grid

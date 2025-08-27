@@ -13,14 +13,12 @@ using FrequencyMaxwell
         @test_nowarn begin
             config = ConvergentBornConfig(
                 wavelength = 500e-9,      # 500 nm (green light)
-                NA = 1.4,                 # High numerical aperture
                 permittivity_bg = 1.33^2, # Water background (n=1.33)
                 resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
                 grid_size = (64, 64, 32)  # Smaller grid for faster testing
             )
             
             @test config.wavelength == 500e-9
-            @test config.NA == 1.4
             @test config.permittivity_bg == 1.33^2
         end
         
@@ -28,7 +26,6 @@ using FrequencyMaxwell
         @test_nowarn begin
             config = ConvergentBornConfig(
                 wavelength = 632.8e-9,   # He-Ne laser (from examples)
-                NA = 0.9,
                 permittivity_bg = 1.0,   # Air background
                 resolution = (100e-9, 100e-9, 100e-9),
                 grid_size = (32, 32, 16)
@@ -74,7 +71,6 @@ using FrequencyMaxwell
         @test_nowarn begin
             config = ConvergentBornConfig(
                 wavelength = 500e-9,
-                NA = 1.2,
                 permittivity_bg = 1.0,
                 resolution = (100e-9, 100e-9, 100e-9),
                 grid_size = (16, 16, 8)
@@ -97,7 +93,6 @@ using FrequencyMaxwell
         @test_nowarn begin
             config = ConvergentBornConfig(
                 wavelength = 532e-9,
-                NA = 1.0,
                 permittivity_bg = 1.0,
                 resolution = (200e-9, 200e-9, 200e-9),
                 grid_size = (16, 16, 8)
@@ -123,7 +118,6 @@ using FrequencyMaxwell
         @test_nowarn begin
             config = ConvergentBornConfig(
                 wavelength = 532e-9,
-                NA = 1.2,
                 resolution = (50e-9, 50e-9, 100e-9),
                 grid_size = (32, 32, 16)
             )
@@ -179,16 +173,6 @@ using FrequencyMaxwell
         # Invalid wavelength (example validation)
         @test_throws ArgumentError ConvergentBornConfig(
             wavelength = -500e-9,  # Invalid
-            NA = 1.4,
-            permittivity_bg = 1.33^2,
-            resolution = (50e-9, 50e-9, 50e-9),
-            grid_size = (32, 32, 16)
-        )
-        
-        # Invalid NA (example validation)  
-        @test_throws ArgumentError ConvergentBornConfig(
-            wavelength = 500e-9,
-            NA = 3.0,  # Invalid (> 2.0)
             permittivity_bg = 1.33^2,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (32, 32, 16)
@@ -201,7 +185,6 @@ using FrequencyMaxwell
             # Step 1: Configuration (from examples)
             config = ConvergentBornConfig(
                 wavelength = 532e-9,  # Green laser (common in examples)
-                NA = 1.2,
                 permittivity_bg = 1.333^2,  # Water (common background)
                 resolution = (100e-9, 100e-9, 100e-9),
                 grid_size = (24, 24, 12)  # Small for testing

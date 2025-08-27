@@ -8,7 +8,6 @@ Tests electromagnetic source generation and field initialization.
         # Test basic plane wave source - matches original examples
         config = ConvergentBornConfig(
             wavelength = 532e-9,
-            NA = 1.2,
             permittivity_bg = 1.333^2,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (64, 64, 32)
@@ -43,7 +42,6 @@ Tests electromagnetic source generation and field initialization.
     @testset "Source Polarization" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 16)
@@ -86,7 +84,6 @@ Tests electromagnetic source generation and field initialization.
     @testset "Oblique Incidence" begin
         config = ConvergentBornConfig(
             wavelength = 355e-9,  # UV wavelength from grating example
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (10e-9, 10e-9, 10e-9),
             grid_size = (20, 50, 50)
@@ -126,7 +123,6 @@ Tests electromagnetic source generation and field initialization.
     @testset "Source Field Properties" begin
         config = ConvergentBornConfig(
             wavelength = 633e-9,
-            NA = 1.2,
             permittivity_bg = 1.33^2,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (32, 32, 32)
@@ -170,7 +166,6 @@ Tests electromagnetic source generation and field initialization.
     @testset "Multiple Sources" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)

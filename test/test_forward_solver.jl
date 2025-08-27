@@ -9,7 +9,6 @@ Tests complete forward solver workflows including realistic scattering problems.
         radius_um = 0.5  # 0.5 micron radius
         config = ConvergentBornConfig(
             wavelength = 532e-9,
-            NA = 1.2,
             permittivity_bg = 1.333^2,  # Water
             resolution = (50e-9, 50e-9, 50e-9),  # 50 nm resolution
             grid_size = (101, 101, 96),  # Smaller than original 201x201x191
@@ -75,7 +74,6 @@ Tests complete forward solver workflows including realistic scattering problems.
         # Test Born series convergence with small perturbation
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)
@@ -113,7 +111,6 @@ Tests complete forward solver workflows including realistic scattering problems.
     @testset "Material Contrast Effects" begin
         config = ConvergentBornConfig(
             wavelength = 633e-9,
-            NA = 1.2,
             permittivity_bg = 1.33^2,  # Water
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)
@@ -155,7 +152,6 @@ Tests complete forward solver workflows including realistic scattering problems.
     @testset "Lossy Materials" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)
@@ -202,7 +198,6 @@ Tests complete forward solver workflows including realistic scattering problems.
     @testset "Field Boundary Conditions" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32),

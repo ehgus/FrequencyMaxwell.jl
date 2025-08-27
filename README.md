@@ -80,7 +80,6 @@ using FrequencyMaxwell
 # Configure the electromagnetic solver
 config = ConvergentBornConfig(
     wavelength = 500e-9,          # 500 nm wavelength (green light)
-    NA = 1.4,                     # High numerical aperture objective
     permittivity_bg = 1.33^2,     # Water background (n=1.33)
     resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
     grid_size = (128, 128, 64),           # Computational grid size
@@ -212,7 +211,6 @@ Typical performance characteristics:
 # High-resolution microscopy simulation
 config = ConvergentBornConfig(
     wavelength = 488e-9,           # Blue laser
-    NA = 1.42,                     # Oil immersion objective
     permittivity_bg = 1.515^2,     # Oil immersion medium
     resolution = (25e-9, 25e-9, 50e-9),  # Anisotropic resolution
     grid_size = (256, 256, 128)

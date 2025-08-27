@@ -8,7 +8,6 @@ Tests fundamental solver initialization, configuration, and basic operations.
         # Test basic solver construction with minimal parameters
         config = ConvergentBornConfig(
             wavelength = 532e-9,  # 532 nm (green laser)
-            NA = 1.2,
             permittivity_bg = 1.333^2,  # Water background
             resolution = (50e-9, 50e-9, 50e-9),  # 50 nm resolution
             grid_size = (64, 64, 32)  # Smaller grid for testing
@@ -22,14 +21,12 @@ Tests fundamental solver initialization, configuration, and basic operations.
         
         # Test configuration access
         @test solver.config.wavelength ≈ 532e-9
-        @test solver.config.NA ≈ 1.2
         @test solver.config.permittivity_bg ≈ 1.333^2
     end
     
     @testset "Solver State Management" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.4,
             permittivity_bg = 1.33^2,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 16)
@@ -51,7 +48,6 @@ Tests fundamental solver initialization, configuration, and basic operations.
     @testset "Solver Parameter Validation" begin
         config = ConvergentBornConfig(
             wavelength = 633e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,  # Vacuum
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (32, 32, 32)
@@ -61,7 +57,6 @@ Tests fundamental solver initialization, configuration, and basic operations.
         
         # Test that solver handles edge cases properly
         @test solver.config.permittivity_bg ≈ 1.0
-        @test solver.config.NA ≈ 1.0
         
         # Test Born max validation
         @test_throws ArgumentError set_Born_max!(solver, -1)

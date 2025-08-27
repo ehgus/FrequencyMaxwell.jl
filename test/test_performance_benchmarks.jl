@@ -8,7 +8,6 @@ Tests solver performance characteristics and scaling behavior.
         # Basic performance test with known problem size
         config = ConvergentBornConfig(
             wavelength = 532e-9,
-            NA = 1.2,
             permittivity_bg = 1.333^2,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (64, 64, 32)  # Smaller than original for CI
@@ -56,7 +55,6 @@ Tests solver performance characteristics and scaling behavior.
     @testset "Scaling with Born Iterations" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)
@@ -101,7 +99,6 @@ Tests solver performance characteristics and scaling behavior.
         # Test how performance scales with grid size
         base_config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9)
         )
@@ -112,7 +109,6 @@ Tests solver performance characteristics and scaling behavior.
         for grid_size in grid_sizes
             config = ConvergentBornConfig(
                 wavelength = base_config.wavelength,
-                NA = base_config.NA,
                 permittivity_bg = base_config.permittivity_bg,
                 resolution = base_config.resolution,
                 grid_size = grid_size
@@ -150,7 +146,6 @@ Tests solver performance characteristics and scaling behavior.
     @testset "Memory Usage Patterns" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)
@@ -192,7 +187,6 @@ Tests solver performance characteristics and scaling behavior.
     @testset "Multiple Source Performance" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)
@@ -238,7 +232,6 @@ Tests solver performance characteristics and scaling behavior.
     @testset "Convergence Efficiency" begin
         config = ConvergentBornConfig(
             wavelength = 500e-9,
-            NA = 1.0,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)

@@ -18,7 +18,6 @@ implementation with a type-safe, validated parameter structure.
 
 # Fields
 - `wavelength::T`: Wavelength in the background medium (meters)
-- `NA::T`: Numerical aperture of the imaging system
 - `permittivity_bg::T`: Background relative permittivity
 - `resolution::NTuple{3, T}`: Spatial resolution (dx, dy, dz) in meters  
 - `grid_size::NTuple{3, Int}`: Number of grid points (Nx, Ny, Nz)
@@ -32,7 +31,6 @@ implementation with a type-safe, validated parameter structure.
 ```julia
 ConvergentBornConfig(;
     wavelength::Real,
-    NA::Real,
     permittivity_bg::Real = 1.0,
     resolution::NTuple{3, <:Real},
     grid_size::NTuple{3, Int},
@@ -47,7 +45,6 @@ ConvergentBornConfig(;
 # Validation
 The constructor automatically validates parameters:
 - `wavelength > 0`
-- `0 < NA ≤ 2` (physical limit for numerical aperture)
 - `permittivity_bg > 0`
 - `all(resolution .> 0)`
 - `all(grid_size .> 0)`
@@ -57,7 +54,6 @@ The constructor automatically validates parameters:
 ```julia
 config = ConvergentBornConfig(
     wavelength = 500e-9,     # 500 nm
-    NA = 1.4,                # High NA objective
     permittivity_bg = 1.33^2, # Water background
     resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic
     grid_size = (128, 128, 32)
@@ -66,7 +62,6 @@ config = ConvergentBornConfig(
 """
 struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
     wavelength::T
-    NA::T
     permittivity_bg::T
     resolution::NTuple{3, T}
     grid_size::NTuple{3, Int}
@@ -78,7 +73,6 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
     
     function ConvergentBornConfig{T}(
         wavelength::T,
-        NA::T,
         permittivity_bg::T,
         resolution::NTuple{3, T},
         grid_size::NTuple{3, Int},
@@ -91,14 +85,13 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
         
         # Validate parameters
         wavelength > 0 || throw(ArgumentError("wavelength must be positive"))
-        0 < NA ≤ 2 || throw(ArgumentError("NA must be in (0, 2]"))
         permittivity_bg > 0 || throw(ArgumentError("permittivity_bg must be positive"))
         all(resolution .> 0) || throw(ArgumentError("all resolution components must be positive"))
         all(grid_size .> 0) || throw(ArgumentError("all grid_size components must be positive"))
         0 ≤ tolerance ≤ 1 || throw(ArgumentError("tolerance must be in [0, 1]"))
         
         return new{T}(
-            wavelength, NA, permittivity_bg, resolution, grid_size,
+            wavelength, permittivity_bg, resolution, grid_size,
             use_abbe_sine, boundary_thickness, periodic_boundary,
             iterations_max, tolerance
         )
@@ -108,7 +101,6 @@ end
 # Main constructor with automatic type promotion
 function ConvergentBornConfig(;
     wavelength::Real,
-    NA::Real,
     permittivity_bg::Real = 1.0,
     resolution::NTuple{3, <:Real},
     grid_size::NTuple{3, Int},
@@ -119,12 +111,12 @@ function ConvergentBornConfig(;
     tolerance::Real = 1e-6
 )
     # Promote to common floating-point type
-    T = promote_type(typeof(wavelength), typeof(NA), typeof(permittivity_bg), 
+    T = promote_type(typeof(wavelength), typeof(permittivity_bg), 
                      eltype(resolution), eltype(boundary_thickness), typeof(tolerance))
     T <: AbstractFloat || (T = Float64)  # Fallback to Float64 if not floating-point
     
     return ConvergentBornConfig{T}(
-        T(wavelength), T(NA), T(permittivity_bg), 
+        T(wavelength), T(permittivity_bg), 
         T.(resolution), grid_size, use_abbe_sine, 
         T.(boundary_thickness), periodic_boundary,
         iterations_max, T(tolerance)
@@ -164,7 +156,6 @@ Custom display for configuration objects with formatted output.
 function Base.show(io::IO, config::ConvergentBornConfig{T}) where T
     print(io, "ConvergentBornConfig{$T}:")
     print(io, "\n  wavelength: $(config.wavelength)")
-    print(io, "\n  NA: $(config.NA)")
     print(io, "\n  permittivity_bg: $(config.permittivity_bg)")
     print(io, "\n  resolution: $(config.resolution)")
     print(io, "\n  grid_size: $(config.grid_size)")
