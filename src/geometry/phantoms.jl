@@ -60,15 +60,14 @@ function phantom_bead(
     grid_size::NTuple{3, Int},
     permittivity_profile::AbstractVector{<:Number},
     pixel_radius::Real;
-    num_bead::Int = 1,
     bead_distance::Real = 2 * pixel_radius,
     array_type::Type{<:AbstractArray} = Array
 )
     # Validate inputs
     all(grid_size .> 0) || throw(ArgumentError("grid_size must have positive dimensions"))
     pixel_radius > 0 || throw(ArgumentError("pixel_radius must be positive"))
-    num_bead > 0 || throw(ArgumentError("num_bead must be positive"))
     !isempty(permittivity_profile) || throw(ArgumentError("permittivity_profile cannot be empty"))
+    num_bead = length(permittivity_profile)
     
     # Determine output type
     T = real(eltype(promote_type(eltype(permittivity_profile), typeof(pixel_radius))))

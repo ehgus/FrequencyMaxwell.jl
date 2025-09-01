@@ -6,6 +6,7 @@ electromagnetic scattering from a simple spherical bead phantom.
 """
 
 using FrequencyMaxwell
+using WGLMakie
 
 function main()
     println("FrequencyMaxwell Basic Scattering Example")
@@ -53,7 +54,6 @@ function main()
         config.grid_size,
         [1.5^2],                   # Polystyrene bead (n=1.5)
         16.0,                      # 16-pixel radius (800 nm)
-        num_bead = 1
     )
     
     # Calculate phantom statistics
@@ -65,6 +65,8 @@ function main()
     println("  Bead material: n = $(sqrt(1.5^2)) (polystyrene)")
     println("  Bead radius: $(16 * config.resolution[1] * 1e9) nm")
     println("  Volume fraction: $(round(volume_fraction * 100, digits=2))%")
+
+    heatmap(abs.(phantom[:,:,div(config.grid_size[3],2)]))
     
     # Solve the electromagnetic scattering problem
     println("\nSolving electromagnetic scattering...")
@@ -87,6 +89,8 @@ function main()
     max_intensity = maximum(intensity)
     enhancement = max_intensity / 1.0  # Relative to incident intensity
     
+    heatmap(intensity[:,:,div(config.grid_size[3],2)])
+    heatmap(angle.(fields.E[:,:,div(config.grid_size[3],2),1]))
     println("  Maximum intensity: $(max_intensity) (V/m)²")
     println("  Enhancement factor: $(round(enhancement, digits=2))")
     
