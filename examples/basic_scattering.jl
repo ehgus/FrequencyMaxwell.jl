@@ -12,13 +12,18 @@ function main()
     println("FrequencyMaxwell Basic Scattering Example")
     println("=" ^ 45)
     
-    # Configure the electromagnetic solver
+    # Configure the electromagnetic solver with CBS parameters matching jl-ConvergentBornSolver
     println("Setting up solver configuration...")
     config = ConvergentBornConfig(
-        wavelength = 500e-9,      # 500 nm (green light)
-        permittivity_bg = 1.33^2, # Water background (n=1.33)
+        wavelength = 532e-9,      # 532 nm (green laser)
+        permittivity_bg = 1.333^2, # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
-        grid_size = (128, 128, 64),          # 128×128×64 grid
+        grid_size = (128, 128, 64),           # 128×128×64 grid
+        boundary_thickness = (0.0, 0.0, 3.0e-6),  # 3 μm padding in Z (like jl-ConvergentBornSolver)
+        field_attenuation = (0.0, 0.0, 3.0e-6),   # 3 μm attenuation in Z
+        field_attenuation_sharpness = 1.0,
+        periodic_boundary = (true, true, false),   # Periodic in XY, absorbing in Z
+        iterations_max = -1,       # Auto-calculate optimal iterations
         tolerance = 1e-6          # Convergence tolerance
     )
     
@@ -48,12 +53,17 @@ function main()
     println("  Propagation: $(source.k_vector)")
     println("  Power density: $(source_power(source)) W/m²")
     
-    # Create a spherical bead phantom
+    # Visualize the plane wave source
+    E_incident, _ = FrequencyMaxwell._generate_incident_fields_padded(solver, source)
+    heatmap(angle.(E_incident[div(size(E_incident, 1),2),:,:,1]))
+
+    # Create a spherical bead phantom (smaller for more realistic scattering)
     println("\nGenerating phantom...")
+    bead_radius_pixels = 10.0  # 500 nm radius (10 pixels * 50 nm)
     phantom = phantom_bead(
         config.grid_size,
-        [1.5^2],                   # Polystyrene bead (n=1.5)
-        16.0,                      # 16-pixel radius (800 nm)
+        [1.46^2],                  # SiO2 bead (n=1.46, similar to jl-ConvergentBornSolver example)
+        bead_radius_pixels,        # 500 nm radius
     )
     
     # Calculate phantom statistics
@@ -62,11 +72,11 @@ function main()
     volume_fraction = bead_volume / total_volume
     
     println("Phantom statistics:")
-    println("  Bead material: n = $(sqrt(1.5^2)) (polystyrene)")
-    println("  Bead radius: $(16 * config.resolution[1] * 1e9) nm")
+    println("  Bead material: n = $(sqrt(1.46^2)) (silica)")
+    println("  Bead radius: $(bead_radius_pixels * config.resolution[1] * 1e9) nm")
     println("  Volume fraction: $(round(volume_fraction * 100, digits=2))%")
 
-    heatmap(abs.(phantom[:,:,div(config.grid_size[3],2)]))
+    heatmap(abs.(phantom[div(size(phantom,1),2),:,:]))
     
     # Solve the electromagnetic scattering problem
     println("\nSolving electromagnetic scattering...")
@@ -89,8 +99,8 @@ function main()
     max_intensity = maximum(intensity)
     enhancement = max_intensity / 1.0  # Relative to incident intensity
     
-    heatmap(intensity[:,:,div(config.grid_size[3],2)])
-    heatmap(angle.(fields.E[:,:,div(config.grid_size[3],2),1]))
+    heatmap(intensity[div(size(intensity,1),2),:,:])
+    heatmap(angle.(fields.E[div(size(fields.E,1),2),:,:,1]))
     println("  Maximum intensity: $(max_intensity) (V/m)²")
     println("  Enhancement factor: $(round(enhancement, digits=2))")
     

@@ -23,6 +23,8 @@ implementation with a type-safe, validated parameter structure.
 - `grid_size::NTuple{3, Int}`: Number of grid points (Nx, Ny, Nz)
 - `use_abbe_sine::Bool`: Whether to use Abbe sine condition for illumination
 - `boundary_thickness::NTuple{3, T}`: PML boundary layer thickness in each direction
+- `field_attenuation::NTuple{3, T}`: Field attenuation layer thickness in each direction
+- `field_attenuation_sharpness::T`: Sharpness factor for field attenuation (0-1)
 - `periodic_boundary::NTuple{3, Bool}`: Periodic boundary conditions (x, y, z)
 - `iterations_max::Int`: Maximum number of Born iterations (-1 for auto)
 - `tolerance::T`: Convergence tolerance for iterative solver
@@ -36,6 +38,8 @@ ConvergentBornConfig(;
     grid_size::NTuple{3, Int},
     use_abbe_sine::Bool = true,
     boundary_thickness::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
+    field_attenuation::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
+    field_attenuation_sharpness::Real = 1.0,
     periodic_boundary::NTuple{3, Bool} = (true, true, false),
     iterations_max::Int = -1,
     tolerance::Real = 1e-6
@@ -67,6 +71,8 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
     grid_size::NTuple{3, Int}
     use_abbe_sine::Bool
     boundary_thickness::NTuple{3, T}
+    field_attenuation::NTuple{3, T}
+    field_attenuation_sharpness::T
     periodic_boundary::NTuple{3, Bool}
     iterations_max::Int
     tolerance::T
@@ -78,6 +84,8 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
         grid_size::NTuple{3, Int},
         use_abbe_sine::Bool,
         boundary_thickness::NTuple{3, T},
+        field_attenuation::NTuple{3, T},
+        field_attenuation_sharpness::T,
         periodic_boundary::NTuple{3, Bool},
         iterations_max::Int,
         tolerance::T
@@ -92,8 +100,8 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
         
         return new{T}(
             wavelength, permittivity_bg, resolution, grid_size,
-            use_abbe_sine, boundary_thickness, periodic_boundary,
-            iterations_max, tolerance
+            use_abbe_sine, boundary_thickness, field_attenuation, field_attenuation_sharpness,
+            periodic_boundary, iterations_max, tolerance
         )
     end
 end
@@ -106,20 +114,23 @@ function ConvergentBornConfig(;
     grid_size::NTuple{3, Int},
     use_abbe_sine::Bool = true,
     boundary_thickness::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
+    field_attenuation::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
+    field_attenuation_sharpness::Real = 1.0,
     periodic_boundary::NTuple{3, Bool} = (true, true, false),
     iterations_max::Int = -1,
     tolerance::Real = 1e-6
 )
     # Promote to common floating-point type
     T = promote_type(typeof(wavelength), typeof(permittivity_bg), 
-                     eltype(resolution), eltype(boundary_thickness), typeof(tolerance))
+                     eltype(resolution), eltype(boundary_thickness), 
+                     eltype(field_attenuation), typeof(field_attenuation_sharpness), typeof(tolerance))
     T <: AbstractFloat || (T = Float64)  # Fallback to Float64 if not floating-point
     
     return ConvergentBornConfig{T}(
         T(wavelength), T(permittivity_bg), 
         T.(resolution), grid_size, use_abbe_sine, 
-        T.(boundary_thickness), periodic_boundary,
-        iterations_max, T(tolerance)
+        T.(boundary_thickness), T.(field_attenuation), T(field_attenuation_sharpness),
+        periodic_boundary, iterations_max, T(tolerance)
     )
 end
 

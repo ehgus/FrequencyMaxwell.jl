@@ -2,7 +2,7 @@
 
 julia_version = "1.11.6"
 manifest_format = "2.0"
-project_hash = "f38f0c1d059c03271793a4d68c7034ba6875912b"
+project_hash = "8dc34ef441718ec796c9ec0e0eaf11fd931398e4"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "60665b326b75db6517939d0e1875850bc4a54368"
@@ -114,6 +114,24 @@ weakdeps = ["SparseArrays"]
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 version = "1.11.0"
+
+[[deps.Atomix]]
+deps = ["UnsafeAtomics"]
+git-tree-sha1 = "29bb0eb6f578a587a49da16564705968667f5fa8"
+uuid = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
+version = "1.1.2"
+
+    [deps.Atomix.extensions]
+    AtomixCUDAExt = "CUDA"
+    AtomixMetalExt = "Metal"
+    AtomixOpenCLExt = "OpenCL"
+    AtomixoneAPIExt = "oneAPI"
+
+    [deps.Atomix.weakdeps]
+    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+    Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
+    OpenCL = "08131aa3-fb12-5dee-8b74-c09406e224a2"
+    oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
@@ -356,6 +374,22 @@ deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse_jll"]
 git-tree-sha1 = "07649c499349dad9f08dde4243a4c597064663e9"
 uuid = "ef3ab10e-7fda-4108-b977-705223b18434"
 version = "0.6.0"
+
+[[deps.KernelAbstractions]]
+deps = ["Adapt", "Atomix", "InteractiveUtils", "MacroTools", "PrecompileTools", "Requires", "StaticArrays", "UUIDs"]
+git-tree-sha1 = "83c617e9e9b02306a7acab79e05ec10253db7c87"
+uuid = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+version = "0.9.38"
+
+    [deps.KernelAbstractions.extensions]
+    EnzymeExt = "EnzymeCore"
+    LinearAlgebraExt = "LinearAlgebra"
+    SparseArraysExt = "SparseArrays"
+
+    [deps.KernelAbstractions.weakdeps]
+    EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
+    LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [[deps.Krylov]]
 deps = ["LinearAlgebra", "Printf", "SparseArrays"]
@@ -831,6 +865,17 @@ version = "1.0.2"
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 version = "1.11.0"
+
+[[deps.UnsafeAtomics]]
+git-tree-sha1 = "b13c4edda90890e5b04ba24e20a310fbe6f249ff"
+uuid = "013be700-e6cd-48c3-b4a1-df204f14c38f"
+version = "0.3.0"
+
+    [deps.UnsafeAtomics.extensions]
+    UnsafeAtomicsLLVM = ["LLVM"]
+
+    [deps.UnsafeAtomics.weakdeps]
+    LLVM = "929cbde3-209d-540e-8aea-75f648917ca0"
 
 [[deps.VectorizationBase]]
 deps = ["ArrayInterface", "CPUSummary", "HostCPUFeatures", "IfElse", "LayoutPointers", "Libdl", "LinearAlgebra", "SIMDTypes", "Static", "StaticArrayInterface"]

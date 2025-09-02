@@ -51,6 +51,7 @@ using LinearAlgebra
 using LinearSolve
 using FFTW
 using StaticArrays
+using KernelAbstractions
 
 # Export core types and functions
 export 
@@ -93,6 +94,8 @@ export
 # Include submodules in correct order (dependencies first)
 include("core/types.jl")
 include("core/configuration.jl")
+include("core/dyadic_green.jl")
+include("core/curl.jl")
 include("sources/abstract_source.jl")
 include("sources/plane_wave.jl")
 include("fields/electromagnetic_field.jl")
