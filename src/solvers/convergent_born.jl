@@ -102,16 +102,17 @@ function ConvergentBornSolver(
 end
 
 """
-    solve(solver::ConvergentBornSolver, source::AbstractCurrentSource, permittivity::AbstractArray)
+    solve(solver::ConvergentBornSolver, sources, permittivity::AbstractArray)
 
 Solve the electromagnetic scattering problem using the Convergent Born method.
 
-This function implements the core CBS iteration with LinearSolve.jl integration
-for modern, flexible linear algebra backends and AD compatibility.
+This unified method handles both single sources and multiple coherent sources using Julia's
+multiple dispatch. For multiple sources, they interfere coherently in the same simulation
+domain, enabling applications like beam splitting, interference patterns, and complex scattering.
 
 # Arguments
 - `solver::ConvergentBornSolver`: Pre-configured solver instance
-- `source::AbstractCurrentSource`: Electromagnetic current source
+- `sources`: Either an `AbstractCurrentSource` (single) or `Vector{<:AbstractCurrentSource}` (multiple)
 - `permittivity::AbstractArray{T, 3}`: 3D permittivity distribution
 
 # Returns
@@ -125,30 +126,25 @@ The method solves the electromagnetic scattering equation:
 ```
 where:
 - ψ: total field
-- ψ_incident: incident field from source
+- ψ_incident: incident field from source(s) - coherent superposition for multiple sources
 - G: dyadic Green's function
 - V: potential (permittivity contrast)
 
-# LinearSolve.jl Integration
-The iteration is formulated as a linear system:
-```
-(I - G*V) * ψ = ψ_incident
-```
-This enables use of modern iterative solvers and preconditioning.
+For multiple sources, incident fields are coherently superposed: E_incident = Σ E_i
 
-# Example
+# Examples
 ```julia
-# Create permittivity distribution
-perm = ones(Complex{Float64}, solver.config.grid_size...)
-perm[50:80, 50:80, 10:20] .= 1.5^2  # Add scatterer
+# Single source
+E_field, H_field = solve(solver, source, permittivity)
 
-# Solve
-E_field, H_field = solve(solver, source, perm)
+# Multi-source (coherent interference)
+sources = [source1, source2, source3]
+E_field, H_field = solve(solver, sources, permittivity)
 ```
 """
 function solve(
     solver::ConvergentBornSolver{T, AT},
-    source::AbstractCurrentSource{T},
+    sources::Union{AbstractCurrentSource{T}, Vector{<:AbstractCurrentSource{T}}},
     permittivity::AbstractArray{<:Number, 3}
 ) where {T<:AbstractFloat, AT<:AbstractArray}
     
@@ -156,11 +152,17 @@ function solve(
     size(permittivity) == solver.config.grid_size || 
         throw(ArgumentError("permittivity size $(size(permittivity)) must match grid_size $(solver.config.grid_size)"))
     
+    # Additional validation for multi-source case
+    if sources isa Vector
+        isempty(sources) && throw(ArgumentError("sources vector cannot be empty"))
+        _validate_source_compatibility(sources)
+    end
+    
     # Initialize solver state (computes potential V with proper padding)
     _initialize_solver!(solver, permittivity)
     
-    # Generate incident fields from source (with padding)
-    E_incident, H_incident = _generate_incident_fields_padded(solver, source)
+    # Generate incident fields (multiple dispatch handles single vs multi-source)
+    E_incident, H_incident = _generate_incident_fields_padded(solver, sources)
     
     # Generate source term: V * E_incident + i*eps_imag * E_incident
     source_term = solver.potential .* E_incident .+ Complex{T}(0, solver.eps_imag) .* E_incident
@@ -174,6 +176,7 @@ function solve(
     
     return E_total, H_total
 end
+
 
 """
     _initialize_solver!(solver::ConvergentBornSolver, permittivity::AbstractArray)
@@ -284,6 +287,93 @@ function _generate_incident_fields_padded(
     H_incident = _pad_array(H_incident_orig, solver.boundary_thickness_pixel, :zeros)
     
     return E_incident, H_incident
+end
+
+"""
+    _generate_incident_fields_padded(solver::ConvergentBornSolver, sources::Vector{<:AbstractCurrentSource})
+
+Generate incident electromagnetic fields from multiple coherent sources with proper superposition.
+
+This method overload implements coherent field superposition where multiple electromagnetic sources
+interfere in the same simulation domain. The complex amplitudes are summed to produce
+the combined incident field that includes constructive and destructive interference.
+
+# Arguments
+- `solver::ConvergentBornSolver`: Configured solver instance
+- `sources::Vector{<:AbstractCurrentSource}`: Vector of coherent electromagnetic sources
+
+# Algorithm
+1. Validate source compatibility (same wavelength for coherent interference)
+2. Generate incident fields from each source independently using single-source method
+3. Coherently sum complex amplitudes: E_total = Σ E_i, H_total = Σ H_i
+
+This produces proper electromagnetic interference patterns where sources can interfere
+constructively (bright fringes) or destructively (dark fringes).
+"""
+function _generate_incident_fields_padded(
+    solver::ConvergentBornSolver{T, AT},
+    sources::Vector{<:AbstractCurrentSource{T}}
+) where {T<:AbstractFloat, AT<:AbstractArray}
+    
+    # Initialize total field arrays (padded grid size)
+    padded_size = size(solver.potential)[1:3]
+    E_total = zeros(Complex{T}, padded_size..., 3)
+    H_total = zeros(Complex{T}, padded_size..., 3)
+    
+    # Sum contributions from all sources (coherent superposition)
+    for source in sources
+        E_src, H_src = _generate_incident_fields_padded(solver, source)
+        E_total .+= E_src  # Complex amplitude addition for interference
+        H_total .+= H_src
+    end
+    
+    return E_total, H_total
+end
+
+
+"""
+    _validate_source_compatibility(sources)
+
+Validate that multiple electromagnetic sources are compatible for coherent simulation.
+
+This function ensures that all sources in a multi-source configuration have compatible
+parameters for coherent electromagnetic simulation. The primary requirement is that
+all sources must have the same wavelength for proper interference.
+
+# Arguments
+- `sources::Vector{<:AbstractCurrentSource}`: Vector of sources to validate
+
+# Validation Checks
+1. Non-empty source vector
+2. All sources have identical wavelength (within tolerance 1e-10)
+
+# Throws
+- `ArgumentError` if sources are incompatible with detailed error message
+
+# Example
+```julia
+sources = [source1, source2, source3]
+_validate_source_compatibility(sources)  # Throws if wavelengths differ
+```
+"""
+function _validate_source_compatibility(sources::Vector{<:AbstractCurrentSource{T}}) where T
+    # Check for empty sources vector
+    isempty(sources) && throw(ArgumentError("sources vector cannot be empty"))
+    
+    # All sources must have the same wavelength for coherent interference
+    reference_wavelength = source_wavelength(sources[1])
+    for (i, source) in enumerate(sources[2:end])
+        src_wavelength = source_wavelength(source)
+        if !isapprox(src_wavelength, reference_wavelength, rtol=T(1e-10))
+            throw(ArgumentError(
+                "All sources must have the same wavelength for coherent interference. " *
+                "Source 1 wavelength: $(reference_wavelength), " *
+                "Source $(i+1) wavelength: $(src_wavelength)"
+            ))
+        end
+    end
+    
+    return nothing
 end
 
 """
