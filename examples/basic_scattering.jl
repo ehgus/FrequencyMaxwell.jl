@@ -24,7 +24,8 @@ function main()
         field_attenuation_sharpness = 1.0,
         periodic_boundary = (true, true, false),   # Periodic in XY, absorbing in Z
         iterations_max = -1,       # Auto-calculate optimal iterations
-        tolerance = 1e-6          # Convergence tolerance
+        tolerance = 1e-6,          # Convergence tolerance
+        linear_solver = :gmres
     )
     
     println("Configuration:")

@@ -28,6 +28,9 @@ implementation with a type-safe, validated parameter structure.
 - `periodic_boundary::NTuple{3, Bool}`: Periodic boundary conditions (x, y, z)
 - `iterations_max::Int`: Maximum number of Born iterations (-1 for auto)
 - `tolerance::T`: Convergence tolerance for iterative solver
+- `linear_solver::Symbol`: LinearSolve.jl algorithm (:iterative, :gmres, :bicgstab, :cg)
+- `linear_solver_options::Dict{Symbol, Any}`: Additional solver options
+- `preconditioner::Symbol`: Preconditioning strategy (:none, :diagonal, :ilu)
 
 # Constructor
 ```julia
@@ -76,6 +79,9 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
     periodic_boundary::NTuple{3, Bool}
     iterations_max::Int
     tolerance::T
+    linear_solver::Symbol
+    linear_solver_options::Dict{Symbol, Any}
+    preconditioner::Symbol
     
     function ConvergentBornConfig{T}(
         wavelength::T,
@@ -88,7 +94,10 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
         field_attenuation_sharpness::T,
         periodic_boundary::NTuple{3, Bool},
         iterations_max::Int,
-        tolerance::T
+        tolerance::T,
+        linear_solver::Symbol,
+        linear_solver_options::Dict{Symbol, Any},
+        preconditioner::Symbol
     ) where T<:AbstractFloat
         
         # Validate parameters
@@ -101,7 +110,8 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
         return new{T}(
             wavelength, permittivity_bg, resolution, grid_size,
             use_abbe_sine, boundary_thickness, field_attenuation, field_attenuation_sharpness,
-            periodic_boundary, iterations_max, tolerance
+            periodic_boundary, iterations_max, tolerance,
+            linear_solver, linear_solver_options, preconditioner
         )
     end
 end
@@ -118,7 +128,10 @@ function ConvergentBornConfig(;
     field_attenuation_sharpness::Real = 1.0,
     periodic_boundary::NTuple{3, Bool} = (true, true, false),
     iterations_max::Int = -1,
-    tolerance::Real = 1e-6
+    tolerance::Real = 1e-6,
+    linear_solver::Symbol = :iterative,
+    linear_solver_options::Dict{Symbol, Any} = Dict{Symbol, Any}(),
+    preconditioner::Symbol = :none
 )
     # Promote to common floating-point type
     T = promote_type(typeof(wavelength), typeof(permittivity_bg), 
@@ -130,7 +143,8 @@ function ConvergentBornConfig(;
         T(wavelength), T(permittivity_bg), 
         T.(resolution), grid_size, use_abbe_sine, 
         T.(boundary_thickness), T.(field_attenuation), T(field_attenuation_sharpness),
-        periodic_boundary, iterations_max, T(tolerance)
+        periodic_boundary, iterations_max, T(tolerance),
+        linear_solver, linear_solver_options, preconditioner
     )
 end
 

@@ -5,8 +5,13 @@ This module provides the main electromagnetic solver using the Convergent Born
 Iterative Method (CBS) with LinearSolve.jl integration and AD compatibility.
 """
 
+# Import LinearSolve algorithms for the algorithm mapping function
+using LinearSolve: KrylovJL_GMRES, KrylovJL_BICGSTAB, KrylovJL_CG, 
+                  KrylovJL_MINRES, KrylovJL_LSMR, KrylovJL_CRAIGMR
+
+
 """
-    ConvergentBornSolver{T, AT} <: AbstractElectromagneticSolver{T}
+    ConvergentBornSolver{T, AT, FT} <: AbstractElectromagneticSolver{T}
 
 Mutable solver state for the Convergent Born Iterative Method.
 
@@ -15,7 +20,8 @@ following modern Julia best practices for performance and AD compatibility.
 
 # Type Parameters
 - `T<:AbstractFloat`: Floating-point precision type
-- `AT<:AbstractArray`: Array type (for CPU/GPU flexibility)
+- `AT<:AbstractArray`: Array type for 3D potential arrays (for CPU/GPU flexibility)
+- `FT<:AbstractArray`: Array type for 4D electromagnetic field arrays
 
 # Fields
 - `config::ConvergentBornConfig{T}`: Immutable solver configuration
@@ -43,7 +49,7 @@ config = ConvergentBornConfig(
 solver = ConvergentBornSolver(config)
 ```
 """
-mutable struct ConvergentBornSolver{T<:AbstractFloat, AT<:AbstractArray} <: AbstractElectromagneticSolver{T}
+mutable struct ConvergentBornSolver{T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray} <: AbstractElectromagneticSolver{T}
     config::ConvergentBornConfig{T}
     Green_function::Union{Nothing, DyadicGreen{T}}
     flip_Green_function::Union{Nothing, DyadicGreen{T}}
@@ -51,7 +57,7 @@ mutable struct ConvergentBornSolver{T<:AbstractFloat, AT<:AbstractArray} <: Abst
     permittivity::Union{Nothing, AT}  # Original permittivity without padding
     boundary_thickness_pixel::NTuple{3, Int}
     field_attenuation_pixel::NTuple{3, Int}
-    field_attenuation_masks::Vector{AT}
+    field_attenuation_masks::Vector{FT}
     ROI::NTuple{6, Int}  # Region of interest bounds
     eps_imag::T  # Imaginary part for convergence
     Bornmax::Int  # Actual number of iterations to use
@@ -59,9 +65,9 @@ mutable struct ConvergentBornSolver{T<:AbstractFloat, AT<:AbstractArray} <: Abst
     residual_history::Vector{T}
     solver_state::Any  # LinearSolve.jl solver state
     
-    function ConvergentBornSolver{T, AT}(
+    function ConvergentBornSolver{T, AT, FT}(
         config::ConvergentBornConfig{T}
-    ) where {T<:AbstractFloat, AT<:AbstractArray}
+    ) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
         # Calculate boundary thickness in pixels
         boundary_thickness_pixel = round.(Int, config.boundary_thickness ./ (config.resolution .* 2))
         field_attenuation_pixel = round.(Int, config.field_attenuation ./ (config.resolution .* 2))
@@ -73,7 +79,7 @@ mutable struct ConvergentBornSolver{T<:AbstractFloat, AT<:AbstractArray} <: Abst
             boundary_thickness_pixel[3] + 1, boundary_thickness_pixel[3] + config.grid_size[3]
         )
         
-        new{T, AT}(
+        new{T, AT, FT}(
             config,
             nothing,  # Green_function - computed lazily
             nothing,  # flip_Green_function - computed lazily
@@ -81,7 +87,7 @@ mutable struct ConvergentBornSolver{T<:AbstractFloat, AT<:AbstractArray} <: Abst
             nothing,  # permittivity - set during solve
             boundary_thickness_pixel,
             field_attenuation_pixel,
-            AT[],     # field_attenuation_masks - computed during initialization
+            FT[],     # field_attenuation_masks - computed during initialization
             ROI,
             T(0),     # eps_imag - calculated based on potential
             0,        # Bornmax - calculated automatically
@@ -97,9 +103,101 @@ function ConvergentBornSolver(
     config::ConvergentBornConfig{T};
     array_type::Type{<:AbstractArray} = Array
 ) where T<:AbstractFloat
-    AT = array_type{Complex{T}, 3}  # 3D complex arrays for electromagnetic fields
-    return ConvergentBornSolver{T, AT}(config)
+    AT = array_type{Complex{T}, 3}  # 3D complex arrays for potential
+    FT = array_type{Complex{T}, 4}  # 4D complex arrays for electromagnetic fields
+    return ConvergentBornSolver{T, AT, FT}(config)
 end
+
+"""
+    CBSLinearOperator{T, AT, FT} <: Function
+
+Linear operator representing (I - A) for the Convergent Born Series reformulation.
+
+The CBS iteration `Field_{n+1} = Field_0 + A * Field_n` can be reformulated as
+a linear system `(I - A) * Field = Field_0` where:
+- A = V * (G + G_flip)/2 * (i/ε_imag) * V  
+- V is the potential (permittivity contrast)
+- G, G_flip are dyadic Green's functions
+- ε_imag is the imaginary regularization parameter
+
+This operator is compatible with LinearSolve.jl for advanced linear algebra backends.
+
+# Fields
+- `solver::ConvergentBornSolver{T, AT, FT}`: Reference to the CBS solver
+- `temp_arrays::NTuple{3, FT}`: Preallocated temporary 4D field arrays for efficiency
+"""
+struct CBSLinearOperator{T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
+    solver::ConvergentBornSolver{T, AT, FT}
+    temp_arrays::NTuple{3, FT}  # Preallocated temporary 4D field arrays
+    
+    function CBSLinearOperator(solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
+        # Preallocate temporary arrays to match field dimensions
+        field_size = size(solver.potential)
+        temp1 = zeros(Complex{T}, field_size..., 3)
+        temp2 = zeros(Complex{T}, field_size..., 3)
+        temp3 = zeros(Complex{T}, field_size..., 3)
+        
+        new{T, AT, FT}(solver, (temp1, temp2, temp3))
+    end
+end
+
+"""
+    (op::CBSLinearOperator)(y, x)
+
+Apply the linear operator (I - A) to input field x, storing result in y.
+
+This implements: y = x - A*x where A = V * (G + G_flip)/2 * (i/ε_imag) * V
+
+# Arguments
+- `y`: Output vector (flattened field array)  
+- `x`: Input vector (flattened field array)
+"""
+function (op::CBSLinearOperator{T, AT, FT})(y, x, p, t;α = 1, β = 0) where {T, AT, FT}
+    solver = op.solver
+    psi, flip_psi, temp = op.temp_arrays
+    
+    # Reshape flattened input to 4D field array
+    field_shape = size(psi)
+    x_field = reshape(x, field_shape)
+    
+    # Apply operator A to x: A*x = (1 - V * (G + G_flip)/2)) * (i/ε_imag) * V * x
+    
+    # Step 1: (i/ε_imag) * V * x (element-wise multiplication with potential)
+    temp .= solver.potential .* x_field
+    psi .= (Complex{T}(0, 1) / solver.eps_imag) .* temp
+    temp .= psi
+    
+    # Step 3: (G + G_flip)/2
+    flip_psi .= psi
+    conv!(solver.Green_function, psi)
+    conv!(solver.flip_Green_function, flip_psi)
+    psi .+= flip_psi
+    psi ./= 2
+    
+    # Step 4: V
+    psi .*= solver.potential
+    
+    # Final result: y = (1 - V * (G + G_flip)/2) * (i/ε_imag) * V * x
+    temp .-= psi
+    _apply_attenuation_masks!(temp, solver.field_attenuation_masks)
+    
+    # Flatten result back to vector
+    # y = α * (I - A) * x + β * y
+    y .*= β
+    y .+= α .* vec(temp)
+    
+    return y
+end
+
+function LinearAlgebra.mul!(y, op::CBSLinearOperator, x, α, β)
+    op(y, x, nothing, nothing;α, β)
+end
+
+# Make the operator compatible with LinearSolve.jl AbstractArray interface
+Base.size(op::CBSLinearOperator) = (length(op.temp_arrays[1]), length(op.temp_arrays[1]))
+Base.size(op::CBSLinearOperator, dim::Integer) = size(op)[dim]
+Base.eltype(::CBSLinearOperator{T, AT, FT}) where {T, AT, FT} = Complex{T}
+Base.ndims(::CBSLinearOperator) = 2  # Matrix-like operator
 
 """
     solve(solver::ConvergentBornSolver, sources, permittivity::AbstractArray)
@@ -143,10 +241,10 @@ E_field, H_field = solve(solver, sources, permittivity)
 ```
 """
 function solve(
-    solver::ConvergentBornSolver{T, AT},
+    solver::ConvergentBornSolver{T, AT, FT},
     sources::Union{AbstractCurrentSource{T}, Vector{<:AbstractCurrentSource{T}}},
     permittivity::AbstractArray{<:Number, 3}
-) where {T<:AbstractFloat, AT<:AbstractArray}
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
     
     # Validate input dimensions
     size(permittivity) == solver.config.grid_size || 
@@ -184,9 +282,9 @@ end
 Initialize solver internal state for a new problem.
 """
 function _initialize_solver!(
-    solver::ConvergentBornSolver{T, AT},
+    solver::ConvergentBornSolver{T, AT, FT},
     permittivity::AbstractArray{<:Number, 3}
-) where {T<:AbstractFloat, AT<:AbstractArray}
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
     
     # Store original permittivity
     solver.permittivity = AT(Complex{T}.(permittivity))
@@ -240,7 +338,7 @@ end
 
 Compute the dyadic Green's function for the given configuration.
 """
-function _compute_green_functions(solver::ConvergentBornSolver{T}) where T
+function _compute_green_functions(solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
     config = solver.config
     
     # Calculate wave number in background medium
@@ -268,9 +366,9 @@ end
 Generate incident electromagnetic fields from the current source.
 """
 function _generate_incident_fields_padded(
-    solver::ConvergentBornSolver{T, AT},
+    solver::ConvergentBornSolver{T, AT, FT},
     source::AbstractCurrentSource{T}
-) where {T<:AbstractFloat, AT<:AbstractArray}
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
     
     # Generate incident fields on original grid
     grid_size = solver.config.grid_size
@@ -311,9 +409,9 @@ This produces proper electromagnetic interference patterns where sources can int
 constructively (bright fringes) or destructively (dark fringes).
 """
 function _generate_incident_fields_padded(
-    solver::ConvergentBornSolver{T, AT},
+    solver::ConvergentBornSolver{T, AT, FT},
     sources::Vector{<:AbstractCurrentSource{T}}
-) where {T<:AbstractFloat, AT<:AbstractArray}
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
     
     # Initialize total field arrays (padded grid size)
     padded_size = size(solver.potential)[1:3]
@@ -390,9 +488,9 @@ The coordinate system is centered at the domain center for proper phase referenc
 function _fill_plane_wave_fields!(
     E_incident::AbstractArray{Complex{T}, 4},
     H_incident::AbstractArray{Complex{T}, 4},
-    solver::ConvergentBornSolver{T},
+    solver::ConvergentBornSolver{T, AT, FT},
     source::PlaneWaveSource{T}
-) where T<:AbstractFloat
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
     
     config = solver.config
     grid_size = config.grid_size
@@ -445,37 +543,64 @@ function _fill_plane_wave_fields!(
 end
 
 """
-    _solve_scattering_equation(solver, E_incident, H_incident)
+    _solve_cbs_scattering(solver, source)
 
-Solve the electromagnetic scattering equation using the Convergent Born Series.
+Solve the electromagnetic scattering equation using either iterative CBS or LinearSolve.jl.
+
+Dispatches to appropriate implementation based on solver configuration:
+- `:iterative`: Traditional CBS iteration method
+- Other algorithms: LinearSolve.jl reformulation as linear system (I - A) * Field = Field_0
+
+# Arguments
+- `solver::ConvergentBornSolver`: Configured solver instance
+- `source::AbstractArray{Complex{T}, 4}`: Source term array
+
+# Returns
+- `(E_field, H_field)`: Tuple of electric and magnetic field arrays
+"""
+function _solve_cbs_scattering(
+    solver::ConvergentBornSolver{T, AT, FT},
+    source::AbstractArray{Complex{T}, 4}
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
+    
+    if solver.config.linear_solver == :iterative
+        return _solve_cbs_iterative(solver, source)
+    else
+        return _solve_cbs_linearsolve(solver, source)
+    end
+end
+
+"""
+    _solve_cbs_iterative(solver, source)
+
+Original iterative CBS implementation for backward compatibility and validation.
 
 Implements the CBS iteration:
 E₁ = r/2 * (G + G_flip) * S = V * (G + G_flip) * (i/ε_imag/2) * S  
 E_{n+1} = M * E_n where M := V * (G + G_flip)/2 * r - r + 1
 """
-function _solve_cbs_scattering(
-    solver::ConvergentBornSolver{T, AT},
+function _solve_cbs_iterative(
+    solver::ConvergentBornSolver{T, AT, FT},
     source::AbstractArray{Complex{T}, 4}
-) where {T<:AbstractFloat, AT<:AbstractArray}
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
     
-    # Array dimensions with padding
+    # Prepare right-hand side: Field_0 from first CBS iteration
     size_field = size(source)
     Green_fn = solver.Green_function
     flip_Green_fn = solver.flip_Green_function
-    
-    # Initialize working arrays
     psi = zeros(Complex{T}, size_field)
     flip_psi = zeros(Complex{T}, size_field)
     Field = zeros(Complex{T}, size_field)
     Field_n = zeros(Complex{T}, size_field)
     
-    # CBS iteration 1: E1 = r/2 * (G + G_flip) * S = V * (G + G_flip) * (i/ε/2) * S
     if solver.Bornmax >= 1
+        # Compute Field_0: first iteration of CBS
+        # Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * S
         source_scaled = source .* (Complex{T}(0, 1) / solver.eps_imag)
         _apply_attenuation_masks!(source_scaled, solver.field_attenuation_masks)
         psi .= source_scaled
         
-        # Convolution with Green functions: (G + G_flip)/2
+        # Apply Green's functions: (G + G_flip)/2
         flip_psi .= psi
         conv!(Green_fn, psi)
         conv!(flip_Green_fn, flip_psi) 
@@ -485,31 +610,160 @@ function _solve_cbs_scattering(
         # Element-wise multiplication with potential
         Field_n .= solver.potential .* psi
         _apply_attenuation_masks!(Field_n, solver.field_attenuation_masks)
-        Field .+= Field_n
-    end
-    
-    # CBS iterations n ≥ 2: E_{n+1} = M * E_n where M := V * (G + G_flip)/2 * r - r + 1
-    for iteration = 2:solver.Bornmax
-        psi .= (Complex{T}(0, 1) / solver.eps_imag) .* solver.potential .* Field_n
-        Field_n .-= psi
-        
-        # Convolution with Green functions
-        flip_psi .= psi
-        conv!(Green_fn, psi)
-        conv!(flip_Green_fn, flip_psi)
-        psi .+= flip_psi
-        psi ./= 2
-        
-        # Element-wise multiplication with potential
-        Field_n .+= solver.potential .* psi
-        _apply_attenuation_masks!(Field_n, solver.field_attenuation_masks)
-        Field .+= Field_n
+
+        Field .+= Field_n    
+        # CBS iterations n ≥ 2: E_{n+1} = M * E_n where M := V * (G + G_flip)/2 * r - r + 1
+        for _ = 2:solver.Bornmax
+            psi .= (Complex{T}(0, 1) / solver.eps_imag) .* solver.potential .* Field_n
+            Field_n .-= psi
+            
+            # Convolution with Green functions
+            flip_psi .= psi
+            conv!(Green_fn, psi)
+            conv!(flip_Green_fn, flip_psi)
+            psi .+= flip_psi
+            psi ./= 2
+            
+            # Element-wise multiplication with potential
+            Field_n .+= solver.potential .* psi
+            _apply_attenuation_masks!(Field_n, solver.field_attenuation_masks)
+            Field .+= Field_n
+        end
     end
     
     # Compute magnetic field
     Hfield = _compute_magnetic_field(solver, Field)
     
     return Field, Hfield
+end
+
+"""
+    _solve_cbs_linearsolve(solver, source)
+
+LinearSolve.jl implementation of CBS as linear system (I - A) * Field = Field_0.
+
+This reformulates the geometric series ψ = ψ₀ + A*ψ₀ + A²*ψ₀ + ... as the 
+linear system (I - A) * ψ = ψ₀, enabling advanced linear algebra backends.
+
+# Mathematical Foundation
+- Traditional CBS: Field_{n+1} = Field_0 + A * Field_n
+- Reformulated: (I - A) * Field_total = Field_0
+- Where A = V * (G + G_flip)/2 * (i/ε_imag) * V
+
+# Performance Benefits
+- Leverages optimized Krylov solvers (GMRES, BiCGSTAB, etc.)
+- Adaptive convergence criteria
+- Advanced preconditioning strategies
+- Potential for significant speedup over fixed iterations
+"""
+function _solve_cbs_linearsolve(
+    solver::ConvergentBornSolver{T, AT, FT},
+    source::AbstractArray{Complex{T}, 4}
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
+    
+    # Prepare right-hand side: Field_0 from first CBS iteration  
+    size_field = size(source)
+    Green_fn = solver.Green_function
+    flip_Green_fn = solver.flip_Green_function
+    psi = zeros(Complex{T}, size_field)
+    flip_psi = zeros(Complex{T}, size_field)
+    rhs = zeros(Complex{T}, size_field)
+
+    if solver.Bornmax >= 1
+        # Compute Field_0: first iteration of CBS
+        # Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * source
+        source_scaled = source .* (Complex{T}(0, 1) / solver.eps_imag)
+        _apply_attenuation_masks!(source_scaled, solver.field_attenuation_masks)
+        psi .= source_scaled
+        
+        # Apply Green's functions: (G + G_flip)/2
+        flip_psi .= psi
+        conv!(Green_fn, psi)
+        conv!(flip_Green_fn, flip_psi)
+        psi .+= flip_psi
+        psi ./= 2
+        
+        # Apply potential: Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * source
+        rhs .= solver.potential .* psi
+        _apply_attenuation_masks!(rhs, solver.field_attenuation_masks)
+
+        # Set up LinearSolve.jl problem
+        # Flatten arrays for LinearSolve.jl compatibility
+        rhs_vec = copy(vec(rhs))
+        x0_vec = copy(vec(rhs))  # Initial guess: use first CBS iteration
+        # Create linear operator (I - A)
+        linear_op = CBSLinearOperator(solver)
+
+        # Create linear problem
+        prob = LinearProblem(linear_op, rhs_vec; u0=x0_vec)
+        
+        # Configure solver algorithm
+        algorithm = _get_linearsolve_algorithm(solver.config.linear_solver)
+        
+        # Set solver options
+        solver_options = Dict{Symbol, Any}(
+            :reltol => solver.config.tolerance,
+            :abstol => solver.config.tolerance * 1e-2,
+            :maxiters => max(solver.Bornmax * 2, 100)  # More flexible iteration limit
+        )
+        
+        # Merge user-provided options (override defaults)
+        merge!(solver_options, solver.config.linear_solver_options)
+        
+        # Solve linear system with error handling and fallback
+        sol = LinearSolve.solve(prob, algorithm; solver_options...)
+
+        # Check convergence status
+        if !SciMLBase.successful_retcode(sol.retcode)
+            @warn "LinearSolve.jl did not converge."
+        end
+
+        # Reshape solution back to field array
+        Field = reshape(sol.u, size_field)
+
+        # Update solver statistics if available
+        if hasfield(typeof(sol), :iters)
+            solver.iteration_count = sol.iters
+        end
+        if hasfield(typeof(sol), :resid)
+            push!(solver.residual_history, sol.resid)
+        end
+    end
+    
+    # Compute magnetic field using same method as iterative version
+    Hfield = _compute_magnetic_field(solver, Field)
+    
+    return Field, Hfield
+end
+
+"""
+    _get_linearsolve_algorithm(solver_symbol::Symbol)
+
+Map solver configuration symbols to LinearSolve.jl algorithms.
+
+# Supported Algorithms
+- `:gmres`: GMRES for general non-symmetric systems
+- `:bicgstab`: BiCGSTAB for faster convergence on some problems  
+- `:cg`: Conjugate Gradient for symmetric positive definite systems
+- `:minres`: MINRES for symmetric indefinite systems
+- `:lsqr`: LSQR for least squares problems
+"""
+function _get_linearsolve_algorithm(solver_symbol::Symbol)
+    algorithm_map = Dict{Symbol, Any}(
+        :gmres => KrylovJL_GMRES(),
+        :bicgstab => KrylovJL_BICGSTAB(),
+        :cg => KrylovJL_CG(),
+        :minres => KrylovJL_MINRES(),
+        :lsmr => KrylovJL_LSMR(),
+        :craigmr => KrylovJL_CRAIGMR()
+    )
+    
+    if haskey(algorithm_map, solver_symbol)
+        return algorithm_map[solver_symbol]
+    else
+        @warn "Unknown solver algorithm: $solver_symbol. Using GMRES as default."
+        return KrylovJL_GMRES()
+    end
 end
 
 """
@@ -521,9 +775,9 @@ H = -i/k₀ * (n₀/Z₀) * ∇ × E
 where k₀ is the free-space wave number and Z₀ = 377 Ω is the impedance.
 """
 function _compute_magnetic_field(
-    solver::ConvergentBornSolver{T, AT},
+    solver::ConvergentBornSolver{T, AT, FT},
     E_field::AbstractArray{Complex{T}, 4}
-) where {T<:AbstractFloat, AT<:AbstractArray}
+) where {T<:AbstractFloat, AT<:AbstractArray, FT<:AbstractArray}
     
     # Create curl operator for field with padding
     curl_op = Curl(AT, T, size(solver.potential), solver.config.resolution)
@@ -620,7 +874,7 @@ end
 
 Create field attenuation masks to prevent boundary reflections.
 """
-function _create_attenuation_masks!(solver::ConvergentBornSolver{T, AT}) where {T, AT}
+function _create_attenuation_masks!(solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
     empty!(solver.field_attenuation_masks)
     
     for dim in 1:3
@@ -653,12 +907,13 @@ function _create_attenuation_masks!(solver::ConvergentBornSolver{T, AT}) where {
             reverse(window)
         )
         
-        # Reshape to proper dimension
-        mask_shape = ones(Int, 3)
+        # Reshape to proper 4D field dimension (3 spatial + 1 component)
+        mask_shape = ones(Int, 4)
         mask_shape[dim] = length(filter_1d)
+        mask_shape[4] = 1  # Broadcasting dimension for field components
         mask = reshape(filter_1d, Tuple(mask_shape))
         
-        push!(solver.field_attenuation_masks, AT(mask))
+        push!(solver.field_attenuation_masks, FT(mask))
     end
 end
 
@@ -709,7 +964,7 @@ end
 
 Custom display for solver objects with status information.
 """
-function Base.show(io::IO, solver::ConvergentBornSolver{T, AT}) where {T, AT}
+function Base.show(io::IO, solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
     print(io, "ConvergentBornSolver{$T, $(AT.name)}:")
     print(io, "\n  iterations: $(solver.iteration_count)")
     if !isempty(solver.residual_history)

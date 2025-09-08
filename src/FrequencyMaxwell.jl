@@ -52,6 +52,7 @@ using LinearSolve
 using FFTW
 using StaticArrays
 using KernelAbstractions
+using SciMLBase
 
 # Export core types and functions
 export 

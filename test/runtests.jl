@@ -259,3 +259,10 @@ end
 
 # Include example integration tests
 include("test_examples.jl")
+
+# Include LinearSolve.jl integration tests
+include("test_linearsolve_integration.jl")
+
+# Include performance benchmarking tests (optional - can be run separately)
+# Uncomment the line below to include performance benchmarks in regular test suite
+# include("test_linearsolve_performance.jl")
