@@ -37,7 +37,7 @@ function check_julia_version()
     println("📋 Checking Julia version...")
     min_version = v"1.8"
     current_version = VERSION
-    
+
     if current_version >= min_version
         println("  ✓ Julia $current_version (>= $min_version required)")
         return true
@@ -50,7 +50,7 @@ end
 
 function check_git_availability()
     println("\n🔧 Checking Git availability...")
-    
+
     try
         result = read(`git --version`, String)
         println("  ✓ Git is available: $(strip(result))")
@@ -64,7 +64,7 @@ end
 
 function check_matlab_availability()
     println("\n🔧 Checking MATLAB availability...")
-    
+
     # Check if MATLAB.jl is installed
     matlab_jl_installed = false
     try
@@ -75,11 +75,11 @@ function check_matlab_availability()
         println("  ! MATLAB.jl package not installed")
         println("    Run with --install-deps to install it")
     end
-    
+
     # Check if MATLAB executable is available
     matlab_path = get(ENV, "MATLAB_PATH", "matlab")
     matlab_available = false
-    
+
     try
         result = read(`which $matlab_path`, String)
         if !isempty(strip(result))
@@ -94,7 +94,7 @@ function check_matlab_availability()
             "/opt/matlab/bin/matlab",
             "C:\\Program Files\\MATLAB\\R2023b\\bin\\matlab.exe"
         ]
-        
+
         for path in common_paths
             if isfile(path)
                 println("  ✓ MATLAB found at: $path")
@@ -102,47 +102,47 @@ function check_matlab_availability()
                 break
             end
         end
-        
+
         if !matlab_available
             println("  ! MATLAB executable not found in standard locations")
             println("    Please ensure MATLAB is installed and in PATH")
             println("    Or set MATLAB_PATH environment variable")
         end
     end
-    
+
     return matlab_jl_installed && matlab_available
 end
 
 function check_repository_status()
     println("\n📁 Checking Helmholtz solver repository...")
-    
+
     local_path = abspath(LOCAL_REPO_PATH)
-    
+
     if isdir(local_path)
         println("  ✓ Repository directory found: $local_path")
-        
+
         # Check if it's a git repository
         git_dir = joinpath(local_path, ".git")
         if isdir(git_dir)
             println("  ✓ Valid git repository")
-            
+
             # Check remote origin
             try
                 cd(local_path) do
                     remote_url = strip(read(`git remote get-url origin`, String))
                     if occursin("Helmholtz-adjoint-solver", remote_url)
                         println("  ✓ Correct remote origin: $remote_url")
-                        
+
                         # Check current branch
                         current_branch = strip(read(`git branch --show-current`, String))
                         println("  📍 Current branch: $current_branch")
-                        
+
                         # Check for updates
                         try
                             read(`git fetch origin`, String)
                             local_commit = strip(read(`git rev-parse HEAD`, String))
                             remote_commit = strip(read(`git rev-parse origin/$HELMHOLTZ_REPO_BRANCH`, String))
-                            
+
                             if local_commit == remote_commit
                                 println("  ✓ Repository is up to date")
                             else
@@ -152,7 +152,7 @@ function check_repository_status()
                         catch
                             println("  ! Unable to check for updates (network issue?)")
                         end
-                        
+
                         return true
                     else
                         println("  ✗ Wrong remote origin: $remote_url")
@@ -177,9 +177,9 @@ end
 
 function clone_repository()
     println("\n📥 Cloning Helmholtz adjoint solver repository...")
-    
+
     local_path = abspath(LOCAL_REPO_PATH)
-    
+
     if isdir(local_path)
         println("  ! Directory already exists: $local_path")
         print("  Remove existing directory and re-clone? (y/N): ")
@@ -188,20 +188,20 @@ function clone_repository()
             println("  Aborted.")
             return false
         end
-        
-        rm(local_path, recursive=true)
+
+        rm(local_path, recursive = true)
         println("  ✓ Removed existing directory")
     end
-    
+
     try
         println("  📡 Cloning from $HELMHOLTZ_REPO_URL...")
         run(`git clone --branch $HELMHOLTZ_REPO_BRANCH $HELMHOLTZ_REPO_URL $local_path`)
         println("  ✓ Repository cloned successfully")
-        
+
         # Verify the clone
         if isdir(local_path) && isdir(joinpath(local_path, ".git"))
             println("  ✓ Clone verification passed")
-            
+
             # List key directories/files
             println("  📂 Repository contents:")
             for item in readdir(local_path)
@@ -212,13 +212,13 @@ function clone_repository()
                     println("    📄 $item")
                 end
             end
-            
+
             return true
         else
             println("  ✗ Clone verification failed")
             return false
         end
-        
+
     catch e
         println("  ✗ Failed to clone repository: $e")
         println("    Please check your internet connection and try again")
@@ -228,25 +228,25 @@ end
 
 function check_solver_files()
     println("\n📋 Checking MATLAB solver files...")
-    
+
     solver_path = abspath(LOCAL_REPO_PATH)
-    
+
     if !isdir(solver_path)
         println("  ✗ Solver directory not found: $solver_path")
         println("    Run with --clone-repo to download the repository")
         return false
     end
-    
+
     # Expected key files (based on typical MATLAB solver structure)
     key_files = [
         "ConvergentBornSolver.m",
         "setup.m",
         "README.md"
     ]
-    
+
     missing_files = String[]
     found_files = String[]
-    
+
     # Search recursively for key files
     for (root, dirs, files) in walkdir(solver_path)
         for file in files
@@ -258,14 +258,14 @@ function check_solver_files()
             end
         end
     end
-    
+
     # Check for missing files
     for file in key_files
         if !any(endswith(f, file) for f in found_files)
             push!(missing_files, file)
         end
     end
-    
+
     if isempty(missing_files)
         println("  ✓ All key solver files found")
         return true
@@ -281,7 +281,7 @@ end
 
 function install_julia_dependencies()
     println("\n📦 Installing Julia dependencies...")
-    
+
     required_packages = [
         "MATLAB",
         "JSON3",
@@ -290,7 +290,7 @@ function install_julia_dependencies()
         "LinearAlgebra",
         "Statistics"
     ]
-    
+
     for pkg in required_packages
         try
             println("  📥 Installing $pkg...")
@@ -301,19 +301,19 @@ function install_julia_dependencies()
             return false
         end
     end
-    
+
     println("  ✓ All Julia dependencies installed")
     return true
 end
 
 function run_basic_tests()
     println("\n🧪 Running basic validation tests...")
-    
+
     try
         # Test Julia module loading
         include("src/CrossValidation.jl")
         println("  ✓ Julia modules load successfully")
-        
+
         # Test MATLAB connection
         try
             Pkg.status("MATLAB")
@@ -322,10 +322,10 @@ function run_basic_tests()
             println("  ✗ MATLAB.jl not installed: $e")
             return false
         end
-        
+
         println("  ✓ Basic tests passed")
         return true
-        
+
     catch e
         println("  ✗ Basic tests failed: $e")
         return false
@@ -336,14 +336,14 @@ function print_summary(checks_passed::Dict)
     println("\n" * "="^70)
     println("SETUP SUMMARY")
     println("="^70)
-    
+
     all_passed = true
     for (check, passed) in checks_passed
         status = passed ? "✓" : "✗"
         println("  $status $check")
         all_passed = all_passed && passed
     end
-    
+
     println()
     if all_passed
         println("🎉 Setup completed successfully!")
@@ -367,7 +367,7 @@ function print_summary(checks_passed::Dict)
             println("  4. Run: julia setup.jl --install-deps")
         end
     end
-    
+
     println("\n" * "="^70)
 end
 
@@ -379,16 +379,16 @@ function main()
     run_tests = "--test" in args
     verbose = "--verbose" in args
     clone_repo = "--clone-repo" in args
-    
+
     print_header()
-    
+
     # Run checks
     checks_passed = Dict{String, Bool}()
-    
+
     checks_passed["Julia Version"] = check_julia_version()
     checks_passed["Git Available"] = check_git_availability()
     checks_passed["MATLAB Available"] = check_matlab_availability()
-    
+
     if clone_repo
         success = clone_repository()
         if !success
@@ -396,26 +396,26 @@ function main()
             exit(1)
         end
     end
-    
+
     checks_passed["Repository Status"] = check_repository_status()
     checks_passed["Solver Files"] = check_solver_files()
-    
+
     # Install dependencies if requested
     if install_deps && !check_only
         checks_passed["Julia Dependencies"] = install_julia_dependencies()
     else
         checks_passed["Julia Dependencies"] = true  # Assume OK if not installing
     end
-    
+
     # Run tests if requested
     if run_tests && !check_only
         checks_passed["Basic Tests"] = run_basic_tests()
     else
         checks_passed["Basic Tests"] = true  # Skip if not requested
     end
-    
+
     print_summary(checks_passed)
-    
+
     # Exit with appropriate code
     all_passed = all(values(checks_passed))
     exit(all_passed ? 0 : 1)

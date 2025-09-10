@@ -45,14 +45,14 @@ struct DeploymentConfig
     enable_monitoring::Bool
     performance_mode::Bool
     debug_mode::Bool
-    
-    function DeploymentConfig(environment="production")
+
+    function DeploymentConfig(environment = "production")
         if environment ∉ ENVIRONMENTS
             error("Invalid environment. Must be one of: $(join(ENVIRONMENTS, ", "))")
         end
-        
+
         base_path = pwd()
-        
+
         new(
             environment,
             base_path,
@@ -79,20 +79,20 @@ function main()
     println("$FRAMEWORK_NAME Deployment Script")
     println("Version: $VERSION")
     println("="^80)
-    
+
     # Parse command line arguments
     args = ARGS
     environment = length(args) > 0 ? args[1] : "production"
-    
+
     try
         # Initialize deployment
         config = DeploymentConfig(environment)
-        
+
         println("\n🚀 Starting deployment for environment: $(config.environment)")
-        
+
         # Run deployment steps
         deployment_successful = run_deployment_pipeline(config)
-        
+
         if deployment_successful
             println("\n✅ Deployment completed successfully!")
             println("Framework is ready for use in $(config.environment) environment.")
@@ -102,7 +102,7 @@ function main()
             println("Check logs and error messages above.")
             exit(1)
         end
-        
+
     catch e
         println("\n💥 Deployment error: $e")
         println("Run with --debug for detailed error information.")
@@ -130,30 +130,30 @@ function run_deployment_pipeline(config::DeploymentConfig)
         ("Backup Configuration", () -> setup_backup(config)),
         ("Final Validation", () -> run_final_validation(config))
     ]
-    
+
     total_steps = length(steps)
-    
+
     for (i, (step_name, step_function)) in enumerate(steps)
         println("\n[$i/$total_steps] $step_name...")
-        
+
         try
             start_time = time()
             success = step_function()
             elapsed = time() - start_time
-            
+
             if success
                 println("  ✅ $step_name completed ($(round(elapsed, digits=1))s)")
             else
                 println("  ❌ $step_name failed")
                 return false
             end
-            
+
         catch e
             println("  💥 $step_name error: $e")
             return false
         end
     end
-    
+
     return true
 end
 
@@ -164,14 +164,14 @@ Check if system meets minimum requirements.
 """
 function check_system_requirements()
     println("  Checking system requirements...")
-    
+
     # Check Julia version
     if VERSION < MIN_JULIA_VERSION
         println("    ❌ Julia version $VERSION < required $MIN_JULIA_VERSION")
         return false
     end
     println("    ✅ Julia version: $VERSION")
-    
+
     # Check available RAM
     total_memory_gb = Sys.total_memory() / (1024^3)
     if total_memory_gb < REQUIRED_RAM_GB
@@ -179,7 +179,7 @@ function check_system_requirements()
     else
         println("    ✅ Available RAM: $(round(total_memory_gb, digits=1)) GB")
     end
-    
+
     # Check disk space
     if Sys.isunix()
         df_output = read(`df -BG .`, String)
@@ -194,10 +194,10 @@ function check_system_requirements()
             end
         end
     end
-    
+
     # Check OS compatibility
     println("    ✅ Operating System: $(Sys.KERNEL) $(Sys.ARCH)")
-    
+
     return true
 end
 
@@ -219,7 +219,7 @@ function setup_directory_structure(config::DeploymentConfig)
         joinpath(config.backup_path, "daily"),
         joinpath(config.backup_path, "weekly")
     ]
-    
+
     for dir in directories
         if !isdir(dir)
             mkpath(dir)
@@ -228,14 +228,14 @@ function setup_directory_structure(config::DeploymentConfig)
             println("    ℹ️  Directory exists: $dir")
         end
     end
-    
+
     # Set appropriate permissions
     if Sys.isunix()
         for dir in directories
             run(`chmod 755 $dir`)
         end
     end
-    
+
     return true
 end
 
@@ -246,14 +246,14 @@ Set up Julia environment and dependencies.
 """
 function setup_julia_environment(config::DeploymentConfig)
     println("    Setting up Julia environment...")
-    
+
     # Activate project environment
     Pkg.activate(config.julia_project_path)
-    
+
     # Required packages
     required_packages = [
         "MATLAB",
-        "JSON3", 
+        "JSON3",
         "Dates",
         "LinearAlgebra",
         "Statistics",
@@ -262,7 +262,7 @@ function setup_julia_environment(config::DeploymentConfig)
         "Printf",
         "UUIDs"
     ]
-    
+
     # Install packages
     for pkg in required_packages
         try
@@ -277,11 +277,11 @@ function setup_julia_environment(config::DeploymentConfig)
             end
         end
     end
-    
+
     # Precompile packages
     println("    Precompiling packages...")
     Pkg.precompile()
-    
+
     return true
 end
 
@@ -293,9 +293,9 @@ Set up the Helmholtz solver repository.
 function setup_repository(config::DeploymentConfig)
     if !isdir(config.repository_path)
         println("    Cloning Helmholtz solver repository...")
-        
+
         repo_url = "https://github.com/ehgus/Helmholtz-adjoint-solver.git"
-        
+
         try
             run(`git clone $repo_url $(config.repository_path)`)
             println("    ✅ Repository cloned successfully")
@@ -305,7 +305,7 @@ function setup_repository(config::DeploymentConfig)
         end
     else
         println("    Repository already exists, checking for updates...")
-        
+
         try
             cd(config.repository_path) do
                 if config.auto_update
@@ -319,10 +319,10 @@ function setup_repository(config::DeploymentConfig)
             println("    ⚠️  Could not update repository: $e")
         end
     end
-    
+
     # Verify repository structure
     required_files = ["ConvergentBornSolver.m", "README.md", "LICENSE"]
-    
+
     for file in required_files
         found = false
         for (root, dirs, files) in walkdir(config.repository_path)
@@ -331,7 +331,7 @@ function setup_repository(config::DeploymentConfig)
                 break
             end
         end
-        
+
         if found
             println("    ✅ Found required file: $file")
         else
@@ -339,7 +339,7 @@ function setup_repository(config::DeploymentConfig)
             return false
         end
     end
-    
+
     return true
 end
 
@@ -359,19 +359,19 @@ function detect_matlab_path()
     else
         ["matlab"]
     end
-    
+
     # Check environment variable
     matlab_path = get(ENV, "MATLAB_PATH", "")
     if !isempty(matlab_path)
         return matlab_path
     end
-    
+
     # Check system PATH - let errors surface if which command has issues
     if success(`which matlab`)
         result = read(`which matlab`, String)
         return strip(result)
     end
-    
+
     return "matlab"  # Default fallback
 end
 
@@ -382,11 +382,12 @@ Set up MATLAB integration.
 """
 function setup_matlab_integration(config::DeploymentConfig)
     println("    Setting up MATLAB integration...")
-    
+
     # Check MATLAB availability
     try
         if isfile(config.matlab_path)
-            result = read(`$(config.matlab_path) -batch "fprintf('MATLAB Version: %s\\n', version); quit"`, String)
+            result = read(
+                `$(config.matlab_path) -batch "fprintf('MATLAB Version: %s\\n', version); quit"`, String)
             println("    ✅ MATLAB accessible: $(strip(result))")
         else
             # Try system matlab command
@@ -398,7 +399,7 @@ function setup_matlab_integration(config::DeploymentConfig)
         println("    Please ensure MATLAB is installed and in PATH")
         return false
     end
-    
+
     # Test MATLAB.jl package
     try
         using MATLAB
@@ -407,7 +408,7 @@ function setup_matlab_integration(config::DeploymentConfig)
         println("    ❌ MATLAB.jl package not working: $e")
         return false
     end
-    
+
     return true
 end
 
@@ -418,17 +419,17 @@ Install the cross-validation framework.
 """
 function install_framework(config::DeploymentConfig)
     println("    Installing cross-validation framework...")
-    
+
     # Check framework files exist
     framework_files = [
         "src/CrossValidation.jl",
-        "src/MatlabIntegration.jl", 
+        "src/MatlabIntegration.jl",
         "src/ValidationMetrics.jl",
         "src/ErrorAnalysis.jl",
         "src/RepositoryManager.jl",
         "src/test_cases.jl"
     ]
-    
+
     for file in framework_files
         full_path = joinpath(config.julia_project_path, file)
         if isfile(full_path)
@@ -438,7 +439,7 @@ function install_framework(config::DeploymentConfig)
             return false
         end
     end
-    
+
     # Test framework loading
     try
         include(joinpath(config.julia_project_path, "src", "CrossValidation.jl"))
@@ -447,7 +448,7 @@ function install_framework(config::DeploymentConfig)
         println("    ❌ Framework loading error: $e")
         return false
     end
-    
+
     return true
 end
 
@@ -458,7 +459,7 @@ Set up framework configuration files.
 """
 function setup_configuration(config::DeploymentConfig)
     println("    Setting up configuration...")
-    
+
     # Create configuration file
     config_data = Dict(
         "environment" => config.environment,
@@ -484,15 +485,15 @@ function setup_configuration(config::DeploymentConfig)
             "convergence_threshold" => config.debug_mode ? 1e-6 : 1e-10
         )
     )
-    
+
     config_path = joinpath(config.data_path, "framework_config.json")
-    
+
     open(config_path, "w") do f
         JSON3.pretty(f, config_data)
     end
-    
+
     println("    ✅ Configuration saved to: $config_path")
-    
+
     return true
 end
 
@@ -503,7 +504,7 @@ Run comprehensive health check.
 """
 function run_health_check(config::DeploymentConfig)
     println("    Running health check...")
-    
+
     health_checks = [
         ("Julia Environment", check_julia_environment),
         ("MATLAB Integration", check_matlab_health),
@@ -511,9 +512,9 @@ function run_health_check(config::DeploymentConfig)
         ("File Permissions", () -> check_file_permissions(config)),
         ("System Resources", check_system_resources_detailed)
     ]
-    
+
     all_healthy = true
-    
+
     for (check_name, check_function) in health_checks
         try
             result = check_function()
@@ -528,7 +529,7 @@ function run_health_check(config::DeploymentConfig)
             all_healthy = false
         end
     end
-    
+
     return all_healthy
 end
 
@@ -563,7 +564,7 @@ function check_repository_health(config::DeploymentConfig)
     if !isdir(config.repository_path)
         return false
     end
-    
+
     # Check git status
     cd(config.repository_path) do
         run(`git status`)
@@ -578,18 +579,18 @@ Check file permissions.
 """
 function check_file_permissions(config::DeploymentConfig)
     test_paths = [config.data_path, config.logs_path, config.backup_path]
-    
+
     for path in test_paths
         if !isdir(path)
             return false
         end
-        
+
         # Test write permissions
         test_file = joinpath(path, "permission_test.tmp")
         write(test_file, "test")
         rm(test_file)
     end
-    
+
     return true
 end
 
@@ -613,18 +614,18 @@ function optimize_performance(config::DeploymentConfig)
         println("    Skipping performance optimization (performance_mode=false)")
         return true
     end
-    
+
     println("    Applying performance optimizations...")
-    
+
     # Set Julia optimization flags
     ENV["JULIA_NUM_THREADS"] = string(Sys.CPU_THREADS)
-    
+
     # Configure garbage collection
     if VERSION >= v"1.9"
         # Modern Julia GC tuning would go here
         println("    ✅ GC tuning applied")
     end
-    
+
     println("    ✅ Performance optimizations applied")
     return true
 end
@@ -639,31 +640,31 @@ function setup_monitoring(config::DeploymentConfig)
         println("    Skipping monitoring setup (enable_monitoring=false)")
         return true
     end
-    
+
     println("    Setting up monitoring...")
-    
+
     # Create log rotation script
     log_rotation_script = """
     #!/bin/bash
     # Log rotation script for FrequencyMaxwell Cross-Validation Framework
-    
+
     LOG_DIR="$(config.logs_path)"
     MAX_SIZE="100M"
     MAX_DAYS="30"
-    
+
     find "\$LOG_DIR" -name "*.log" -size +\$MAX_SIZE -exec gzip {} \\;
     find "\$LOG_DIR" -name "*.log.gz" -mtime +\$MAX_DAYS -delete
     """
-    
+
     script_path = joinpath(config.logs_path, "rotate_logs.sh")
     write(script_path, log_rotation_script)
-    
+
     if Sys.isunix()
         run(`chmod +x $script_path`)
     end
-    
+
     println("    ✅ Log rotation configured")
-    
+
     # Set up system monitoring
     monitoring_config = Dict(
         "log_level" => config.debug_mode ? "DEBUG" : "INFO",
@@ -671,14 +672,14 @@ function setup_monitoring(config::DeploymentConfig)
         "performance_tracking" => true,
         "error_alerting" => config.environment == "production"
     )
-    
+
     monitoring_config_path = joinpath(config.logs_path, "monitoring_config.json")
     open(monitoring_config_path, "w") do f
         JSON3.pretty(f, monitoring_config)
     end
-    
+
     println("    ✅ Monitoring configuration saved")
-    
+
     return true
 end
 
@@ -689,22 +690,22 @@ Set up backup procedures.
 """
 function setup_backup(config::DeploymentConfig)
     println("    Setting up backup procedures...")
-    
+
     # Create backup script
     backup_script = """
     #!/bin/bash
     # Backup script for FrequencyMaxwell Cross-Validation Framework
-    
+
     BACKUP_DIR="$(config.backup_path)"
     DATA_DIR="$(config.data_path)"
     DATE=\$(date +%Y%m%d_%H%M%S)
-    
+
     # Daily backup
     tar -czf "\$BACKUP_DIR/daily/backup_\$DATE.tar.gz" -C "\$DATA_DIR" .
-    
+
     # Keep only last 7 daily backups
     find "\$BACKUP_DIR/daily" -name "backup_*.tar.gz" -mtime +7 -delete
-    
+
     # Weekly backup (Sundays)
     if [ \$(date +%u) -eq 7 ]; then
         cp "\$BACKUP_DIR/daily/backup_\$DATE.tar.gz" "\$BACKUP_DIR/weekly/"
@@ -713,22 +714,22 @@ function setup_backup(config::DeploymentConfig)
         find "\$BACKUP_DIR/weekly" -name "backup_*.tar.gz" -mtime +28 -delete
     fi
     """
-    
+
     backup_script_path = joinpath(config.backup_path, "backup.sh")
     write(backup_script_path, backup_script)
-    
+
     if Sys.isunix()
         run(`chmod +x $backup_script_path`)
     end
-    
+
     println("    ✅ Backup script created: $backup_script_path")
-    
+
     # Create initial backup
     if Sys.isunix()
         run(`$backup_script_path`)
         println("    ✅ Initial backup created")
     end
-    
+
     return true
 end
 
@@ -739,7 +740,7 @@ Run final validation tests.
 """
 function run_final_validation(config::DeploymentConfig)
     println("    Running final validation tests...")
-    
+
     # Test framework loading
     try
         include(joinpath(config.julia_project_path, "src", "CrossValidation.jl"))
@@ -749,24 +750,24 @@ function run_final_validation(config::DeploymentConfig)
         println("    ❌ Framework loading failed: $e")
         return false
     end
-    
+
     # Test basic functionality
     try
         cv = CrossValidationFramework(
-            reference_data_path=joinpath(config.data_path, "reference_data"),
-            reports_path=joinpath(config.data_path, "reports")
+            reference_data_path = joinpath(config.data_path, "reference_data"),
+            reports_path = joinpath(config.data_path, "reports")
         )
-        
+
         # Add a simple test case
-        test_case = metalens_forward_test(grid_size=[8, 8], tolerance_level="relaxed")
+        test_case = metalens_forward_test(grid_size = [8, 8], tolerance_level = "relaxed")
         add_test_case!(cv, test_case)
-        
+
         println("    ✅ Basic framework functionality working")
     catch e
         println("    ❌ Framework functionality test failed: $e")
         return false
     end
-    
+
     # Test configuration loading
     config_path = joinpath(config.data_path, "framework_config.json")
     if isfile(config_path)
@@ -778,7 +779,7 @@ function run_final_validation(config::DeploymentConfig)
             return false
         end
     end
-    
+
     println("    ✅ All validation tests passed")
     return true
 end
@@ -792,20 +793,20 @@ function print_next_steps(config::DeploymentConfig)
     println("\n" * "="^60)
     println("DEPLOYMENT COMPLETED SUCCESSFULLY")
     println("="^60)
-    
+
     println("\n📋 Next Steps:")
     println("1. Run basic validation:")
     println("   julia example_usage.jl")
-    
+
     println("\n2. Check framework status:")
     println("   julia setup.jl --check-only --verbose")
-    
+
     println("\n3. View configuration:")
     println("   cat $(joinpath(config.data_path, "framework_config.json"))")
-    
+
     println("\n4. Monitor logs:")
     println("   tail -f $(joinpath(config.logs_path, "system", "*.log"))")
-    
+
     if config.environment == "production"
         println("\n🔧 Production Environment Notes:")
         println("- Auto-update is disabled for stability")
@@ -813,7 +814,7 @@ function print_next_steps(config::DeploymentConfig)
         println("- Performance optimizations are active")
         println("- Use strict tolerances for validation")
     end
-    
+
     if config.environment == "development"
         println("\n🛠️  Development Environment Notes:")
         println("- Debug mode is enabled")
@@ -821,17 +822,17 @@ function print_next_steps(config::DeploymentConfig)
         println("- Relaxed tolerances for faster iteration")
         println("- Detailed logging is active")
     end
-    
+
     println("\n📚 Documentation:")
     println("- README.md: General usage instructions")
     println("- src/: Framework source code and documentation")
     println("- test/: Comprehensive test suite")
-    
+
     println("\n💡 Helpful Commands:")
     println("- Run tests: julia test/test_cross_validation.jl")
     println("- Update repository: julia setup.jl --clone-repo")
     println("- MATLAB diagnostics: julia -e 'include(\"src/MatlabIntegration.jl\"); using .MatlabIntegration; diagnose_matlab_issues()'")
-    
+
     println("\n" * "="^60)
 end
 

@@ -17,7 +17,7 @@ Curl operator for electromagnetic fields.
 - `precision::Type{<:Real}`: Floating-point precision type
 - `freq_res::NTuple{3, T}`: Frequency resolution for each dimension
 """
-struct Curl{T<:Real}
+struct Curl{T <: Real}
     array_type::Type{<:AbstractArray}
     precision::Type{<:Real}
     freq_res::NTuple{3, T}
@@ -34,8 +34,8 @@ Construct a curl operator.
 - `arr_size`: Domain size (nx, ny, nz)
 - `resolution`: Spatial resolution (dx, dy, dz)
 """
-function Curl(array_type::Type, precision::Type, arr_size::NTuple{3, <:Integer}, 
-              resolution::NTuple{3, <:Real})
+function Curl(array_type::Type, precision::Type, arr_size::NTuple{3, <:Integer},
+        resolution::NTuple{3, <:Real})
     T = precision <: Real ? precision : Float64
     # Calculate frequency resolution
     freq_res = 2π ./ (arr_size .* resolution)
@@ -65,50 +65,52 @@ function conv(curl::Curl, field::AbstractArray)
     fill!(result, zero(eltype(result)))
 
     fourier_resolution = curl.freq_res
-    
+
     # Precompute frequency coordinates for each dimension
     fourier_coord = Vector{Any}()
-    
-    for axis = 1:3
+
+    for axis in 1:3
         # Create frequency coordinates: [0, 1, 2, ..., N/2-1, -N/2, -N/2+1, ..., -1]
         N = size(result, axis)
-        coor_axis = vcat(0:div(N,2)-1, -div(N,2):-1)
+        coor_axis = vcat(0:(div(N, 2) - 1), (-div(N, 2)):-1)
         if isodd(N)
-            coor_axis = vcat(0:div(N,2), -div(N,2):-1)
+            coor_axis = vcat(0:div(N, 2), (-div(N, 2)):-1)
         end
-        
+
         # Scale by frequency resolution and multiply by i for derivative
         coor_axis = coor_axis .* fourier_resolution[axis]
-        
+
         # Reshape for broadcasting: put the axis dimension in correct position
         dims = ones(Int, 3)
         dims[axis] = N
         coor_axis_shaped = reshape(coor_axis, Tuple(dims))
-        
+
         # Convert to complex and multiply by i for derivative  
         coord_complex = Complex{curl.precision}(1im) * coor_axis_shaped
         push!(fourier_coord, coord_complex)
     end
-    
+
     # Compute curl in Fourier space: ∇ × E = ik × Ê
     # For each component: (∇ × E)_i = ε_ijk * ik_j * Ê_k
-    
+
     for axis in 1:3
         # Get cyclic permutation for cross product
         # axis=1: (2,3) -> y,z; axis=2: (3,1) -> z,x; axis=3: (1,2) -> x,y
         axes_ordered = [mod1(axis, 3), mod1(axis+1, 3), mod1(axis+2, 3)]
-        
+
         # Take FFT of the field component we're operating on
         field_component_1 = fft(field[:, :, :, axes_ordered[3]])  # Third component
         field_component_2 = fft(field[:, :, :, axes_ordered[2]])  # Second component
-        
+
         # Apply curl: (∇ × E)_i = ik_j * E_k - ik_k * E_j
-        result[:, :, :, axes_ordered[1]] .+= fourier_coord[axes_ordered[2]] .* field_component_1
-        result[:, :, :, axes_ordered[1]] .-= fourier_coord[axes_ordered[3]] .* field_component_2
+        result[:, :, :, axes_ordered[1]] .+= fourier_coord[axes_ordered[2]] .*
+                                             field_component_1
+        result[:, :, :, axes_ordered[1]] .-= fourier_coord[axes_ordered[3]] .*
+                                             field_component_2
     end
-    
+
     # Transform back to spatial domain
     ifft!(result, 1:3)
-    
+
     return result
 end

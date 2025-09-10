@@ -55,42 +55,42 @@ using KernelAbstractions
 using SciMLBase
 
 # Export core types and functions
-export 
-    # Configuration types
-    ConvergentBornConfig,
-    
-    # Solver types
-    ConvergentBornSolver,
-    
-    # Source types  
-    PlaneWaveSource,
-    AbstractCurrentSource,
-    
-    # Core functions
-    solve,
-    
-    # Phantom generation
-    phantom_bead,
-    phantom_plate,
-    phantom_cylinder,
-    
-    # Field utilities
-    ElectromagneticField,
-    field_energy,
-    field_intensity,
-    poynting_vector,
-    extract_plane,
-    
-    # Configuration utilities
-    domain_size,
-    grid_spacing,
-    wavenumber_background,
-    
-    # Source utilities
-    source_wavelength,
-    source_power,
-    validate_source,
-    generate_incident_fields
+export
+# Configuration types
+      ConvergentBornConfig,
+
+# Solver types
+      ConvergentBornSolver,
+
+# Source types  
+      PlaneWaveSource,
+      AbstractCurrentSource,
+
+# Core functions
+      solve,
+
+# Phantom generation
+      phantom_bead,
+      phantom_plate,
+      phantom_cylinder,
+
+# Field utilities
+      ElectromagneticField,
+      field_energy,
+      field_intensity,
+      poynting_vector,
+      extract_plane,
+
+# Configuration utilities
+      domain_size,
+      grid_spacing,
+      wavenumber_background,
+
+# Source utilities
+      source_wavelength,
+      source_power,
+      validate_source,
+      generate_incident_fields
 
 # Include submodules in correct order (dependencies first)
 include("core/types.jl")

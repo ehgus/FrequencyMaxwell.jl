@@ -33,56 +33,57 @@ struct ErrorReport
     error_category::String
     severity::String
     timestamp::DateTime
-    
+
     # Error details
     error_message::String
     stack_trace::String
     context::Dict{String, Any}
-    
+
     # System state
     system_info::Dict{String, Any}
     matlab_status::Dict{String, Any}
     repository_status::Dict{String, Any}
-    
+
     # Analysis results
     root_cause::String
     contributing_factors::Vector{String}
     remediation_steps::Vector{String}
     prevention_measures::Vector{String}
-    
+
     # Performance impact
     performance_impact::String
     reliability_impact::String
-    
+
     # Recovery information
     recovery_possible::Bool
     recovery_strategy::String
     estimated_fix_time::String
-    
-    function ErrorReport(error, context=Dict{String, Any}())
+
+    function ErrorReport(error, context = Dict{String, Any}())
         timestamp = now()
         error_msg = string(error)
-        
+
         # Classify error
         error_type, category, severity = classify_error(error_msg, context)
-        
+
         # Analyze system state
         sys_info = collect_system_information()
         matlab_status = check_matlab_status(context)
         repo_status = check_repository_status(context)
-        
+
         # Determine root cause and solutions
         root_cause, factors = analyze_root_cause(error_msg, category, context)
         remediation = suggest_remediation(error_type, category, context)
         prevention = suggest_prevention_measures(error_type, category)
-        
+
         # Assess impact
         perf_impact = assess_performance_impact(category, severity)
         rel_impact = assess_reliability_impact(category, severity)
-        
+
         # Recovery strategy
-        recoverable, strategy, fix_time = determine_recovery_strategy(error_type, category, severity)
-        
+        recoverable, strategy,
+        fix_time = determine_recovery_strategy(error_type, category, severity)
+
         new(
             error_type, category, severity, timestamp,
             error_msg, "", context,
@@ -101,7 +102,7 @@ Analyze a validation failure and provide detailed diagnostics.
 """
 function analyze_validation_failure(test_result)
     @info "Analyzing validation failure for: $(test_result.test_case.name)"
-    
+
     context = Dict{String, Any}(
         "test_case" => test_result.test_case,
         "execution_time" => test_result.execution_time,
@@ -109,10 +110,10 @@ function analyze_validation_failure(test_result)
         "matlab_results" => test_result.matlab_results,
         "metrics" => test_result.metrics
     )
-    
+
     # Create error from validation failure
     error = ValidationError(test_result.error_message)
-    
+
     return ErrorReport(error, context)
 end
 
@@ -132,22 +133,24 @@ Classify errors into types, categories, and severity levels.
 """
 function classify_error(error_message::String, context::Dict)
     error_msg_lower = lowercase(error_message)
-    
+
     # MATLAB-related errors
     if occursin("matlab", error_msg_lower)
-        if occursin("not found", error_msg_lower) || occursin("command not found", error_msg_lower)
+        if occursin("not found", error_msg_lower) ||
+           occursin("command not found", error_msg_lower)
             return ("MATLAB_NOT_FOUND", "MATLAB_INSTALLATION", "CRITICAL")
         elseif occursin("license", error_msg_lower)
             return ("MATLAB_LICENSE", "MATLAB_LICENSING", "HIGH")
         elseif occursin("session", error_msg_lower)
             return ("MATLAB_SESSION", "MATLAB_RUNTIME", "MEDIUM")
-        elseif occursin("function", error_msg_lower) && occursin("not found", error_msg_lower)
+        elseif occursin("function", error_msg_lower) &&
+               occursin("not found", error_msg_lower)
             return ("MATLAB_FUNCTION_MISSING", "SOLVER_PATH", "HIGH")
         else
             return ("MATLAB_GENERAL", "MATLAB_RUNTIME", "MEDIUM")
         end
-    
-    # Repository/solver errors
+
+        # Repository/solver errors
     elseif occursin("repository", error_msg_lower) || occursin("solver", error_msg_lower)
         if occursin("not found", error_msg_lower) || occursin("directory", error_msg_lower)
             return ("REPOSITORY_MISSING", "REPOSITORY_ACCESS", "HIGH")
@@ -158,40 +161,41 @@ function classify_error(error_message::String, context::Dict)
         else
             return ("REPOSITORY_GENERAL", "REPOSITORY_ACCESS", "MEDIUM")
         end
-    
-    # Numerical/validation errors
+
+        # Numerical/validation errors
     elseif occursin("tolerance", error_msg_lower) || occursin("validation", error_msg_lower)
         if occursin("exceeded", error_msg_lower) || occursin("failed", error_msg_lower)
             return ("VALIDATION_TOLERANCE", "NUMERICAL_ACCURACY", "MEDIUM")
         else
             return ("VALIDATION_GENERAL", "NUMERICAL_ACCURACY", "LOW")
         end
-    
-    # Convergence errors
+
+        # Convergence errors
     elseif occursin("convergence", error_msg_lower) || occursin("residual", error_msg_lower)
         return ("CONVERGENCE_FAILURE", "NUMERICAL_STABILITY", "MEDIUM")
-    
-    # Memory/resource errors
+
+        # Memory/resource errors
     elseif occursin("memory", error_msg_lower) || occursin("allocation", error_msg_lower)
         return ("MEMORY_ERROR", "SYSTEM_RESOURCES", "HIGH")
-    
-    # File I/O errors
+
+        # File I/O errors
     elseif occursin("file", error_msg_lower) || occursin("permission", error_msg_lower)
         if occursin("permission", error_msg_lower) || occursin("access", error_msg_lower)
             return ("PERMISSION_ERROR", "FILE_ACCESS", "MEDIUM")
         else
             return ("FILE_IO_ERROR", "FILE_ACCESS", "MEDIUM")
         end
-    
-    # Network/download errors
-    elseif occursin("network", error_msg_lower) || occursin("download", error_msg_lower) || occursin("clone", error_msg_lower)
+
+        # Network/download errors
+    elseif occursin("network", error_msg_lower) || occursin("download", error_msg_lower) ||
+           occursin("clone", error_msg_lower)
         return ("NETWORK_ERROR", "CONNECTIVITY", "MEDIUM")
-    
-    # Dependency/package errors
+
+        # Dependency/package errors
     elseif occursin("package", error_msg_lower) || occursin("dependency", error_msg_lower)
         return ("DEPENDENCY_ERROR", "PACKAGE_MANAGEMENT", "HIGH")
-    
-    # Generic errors
+
+        # Generic errors
     else
         return ("UNKNOWN_ERROR", "GENERAL", "MEDIUM")
     end
@@ -205,50 +209,50 @@ Analyze the root cause of an error and identify contributing factors.
 function analyze_root_cause(error_message::String, category::String, context::Dict)
     root_cause = "Unknown"
     contributing_factors = String[]
-    
+
     if category == "MATLAB_INSTALLATION"
         root_cause = "MATLAB software not properly installed or not in PATH"
         push!(contributing_factors, "MATLAB executable not found in system PATH")
         push!(contributing_factors, "MATLAB environment variables not set")
         push!(contributing_factors, "Incorrect MATLAB installation")
-        
+
     elseif category == "MATLAB_LICENSING"
         root_cause = "MATLAB license not available or expired"
         push!(contributing_factors, "License server unreachable")
         push!(contributing_factors, "License expired or invalid")
         push!(contributing_factors, "Concurrent user limit exceeded")
-        
+
     elseif category == "REPOSITORY_ACCESS"
         root_cause = "Helmholtz adjoint solver repository not accessible"
         push!(contributing_factors, "Repository not cloned locally")
         push!(contributing_factors, "Git not installed or configured")
         push!(contributing_factors, "Network connectivity issues")
-        
+
     elseif category == "SOLVER_PATH"
         root_cause = "Required MATLAB solver functions not found in path"
         push!(contributing_factors, "Repository directory structure changed")
         push!(contributing_factors, "MATLAB path not configured correctly")
         push!(contributing_factors, "Missing solver dependencies")
-        
+
     elseif category == "NUMERICAL_ACCURACY"
         root_cause = "Numerical precision or algorithm differences"
         push!(contributing_factors, "Different MATLAB versions or settings")
         push!(contributing_factors, "Hardware-dependent numerical precision")
         push!(contributing_factors, "Algorithm implementation differences")
-        
+
     elseif category == "SYSTEM_RESOURCES"
         root_cause = "Insufficient system resources for computation"
         push!(contributing_factors, "Insufficient RAM for problem size")
         push!(contributing_factors, "High system memory usage")
         push!(contributing_factors, "Swap space limitations")
-        
+
     elseif category == "FILE_ACCESS"
         root_cause = "File access permissions or path issues"
         push!(contributing_factors, "Insufficient file permissions")
         push!(contributing_factors, "File or directory locked by another process")
         push!(contributing_factors, "Invalid file paths or missing directories")
     end
-    
+
     return root_cause, contributing_factors
 end
 
@@ -259,56 +263,57 @@ Suggest specific remediation steps for different error types.
 """
 function suggest_remediation(error_type::String, category::String, context::Dict)
     remediation_steps = String[]
-    
+
     if error_type == "MATLAB_NOT_FOUND"
         push!(remediation_steps, "1. Install MATLAB software from MathWorks")
         push!(remediation_steps, "2. Add MATLAB to system PATH environment variable")
         push!(remediation_steps, "3. Set MATLAB_PATH environment variable to matlab executable")
         push!(remediation_steps, "4. Run 'julia setup.jl --verbose' to verify detection")
         push!(remediation_steps, "5. Test MATLAB access: Run 'matlab -batch \"version\"' in terminal")
-        
+
     elseif error_type == "MATLAB_LICENSE"
         push!(remediation_steps, "1. Check MATLAB license validity and expiration")
         push!(remediation_steps, "2. Verify license server connectivity (for network licenses)")
         push!(remediation_steps, "3. Check concurrent user limits")
         push!(remediation_steps, "4. Try running MATLAB standalone to test license")
         push!(remediation_steps, "5. Contact IT support for license issues")
-        
+
     elseif error_type == "REPOSITORY_MISSING"
         push!(remediation_steps, "1. Run 'julia setup.jl --clone-repo' to download repository")
         push!(remediation_steps, "2. Check internet connectivity")
         push!(remediation_steps, "3. Verify Git is installed: Run 'git --version'")
-        push!(remediation_steps, "4. Try manual clone: 'git clone https://github.com/ehgus/Helmholtz-adjoint-solver.git'")
+        push!(remediation_steps,
+            "4. Try manual clone: 'git clone https://github.com/ehgus/Helmholtz-adjoint-solver.git'")
         push!(remediation_steps, "5. Check firewall/proxy settings if needed")
-        
+
     elseif error_type == "SOLVER_MISSING"
         push!(remediation_steps, "1. Verify repository is properly cloned")
         push!(remediation_steps, "2. Check repository contains ConvergentBornSolver.m")
         push!(remediation_steps, "3. Update repository: 'cd Helmholtz-adjoint-solver && git pull'")
         push!(remediation_steps, "4. Reinstall repository: Remove and re-clone")
         push!(remediation_steps, "5. Check repository structure matches expected layout")
-        
+
     elseif error_type == "VALIDATION_TOLERANCE"
         push!(remediation_steps, "1. Review tolerance settings in test case")
         push!(remediation_steps, "2. Check for MATLAB version differences")
         push!(remediation_steps, "3. Verify numerical precision settings")
         push!(remediation_steps, "4. Run with relaxed tolerances for diagnosis")
         push!(remediation_steps, "5. Generate detailed metric report for analysis")
-        
+
     elseif error_type == "MEMORY_ERROR"
         push!(remediation_steps, "1. Reduce problem size (smaller grid_size)")
         push!(remediation_steps, "2. Close other memory-intensive applications")
         push!(remediation_steps, "3. Check available system memory")
         push!(remediation_steps, "4. Use system monitoring to identify memory usage")
         push!(remediation_steps, "5. Consider running on machine with more RAM")
-        
+
     elseif error_type == "PERMISSION_ERROR"
         push!(remediation_steps, "1. Check file/directory permissions")
         push!(remediation_steps, "2. Run with elevated privileges if needed")
         push!(remediation_steps, "3. Ensure directory is writable")
         push!(remediation_steps, "4. Check if files are locked by another process")
         push!(remediation_steps, "5. Try different output directory with full permissions")
-        
+
     else
         push!(remediation_steps, "1. Check error message and logs for specific details")
         push!(remediation_steps, "2. Run setup diagnostics: 'julia setup.jl --verbose'")
@@ -316,7 +321,7 @@ function suggest_remediation(error_type::String, category::String, context::Dict
         push!(remediation_steps, "4. Check system requirements and dependencies")
         push!(remediation_steps, "5. Consult documentation or seek expert assistance")
     end
-    
+
     return remediation_steps
 end
 
@@ -327,32 +332,32 @@ Suggest measures to prevent similar errors in the future.
 """
 function suggest_prevention_measures(error_type::String, category::String)
     prevention_measures = String[]
-    
+
     if category == "MATLAB_INSTALLATION"
         push!(prevention_measures, "Set up automated MATLAB path detection")
         push!(prevention_measures, "Document MATLAB installation requirements")
         push!(prevention_measures, "Create MATLAB installation verification script")
         push!(prevention_measures, "Maintain list of supported MATLAB versions")
-        
+
     elseif category == "REPOSITORY_ACCESS"
         push!(prevention_measures, "Implement automatic repository health checks")
         push!(prevention_measures, "Set up repository backup/mirror locations")
         push!(prevention_measures, "Create offline mode for validation")
         push!(prevention_measures, "Monitor repository accessibility regularly")
-        
+
     elseif category == "NUMERICAL_ACCURACY"
         push!(prevention_measures, "Establish baseline reference data")
         push!(prevention_measures, "Document expected tolerance ranges")
         push!(prevention_measures, "Implement progressive tolerance testing")
         push!(prevention_measures, "Monitor numerical stability trends")
-        
+
     elseif category == "SYSTEM_RESOURCES"
         push!(prevention_measures, "Implement memory usage monitoring")
         push!(prevention_measures, "Set up resource limit warnings")
         push!(prevention_measures, "Create problem size scaling guidelines")
         push!(prevention_measures, "Provide system requirement documentation")
     end
-    
+
     return prevention_measures
 end
 
@@ -363,13 +368,13 @@ Collect comprehensive system information for diagnostics.
 """
 function collect_system_information()
     info = Dict{String, Any}()
-    
+
     # Basic system info
     info["os"] = string(Sys.KERNEL)
     info["architecture"] = string(Sys.ARCH)
     info["julia_version"] = string(VERSION)
     info["cpu_cores"] = Sys.CPU_THREADS
-    
+
     # Memory information (cross-platform)
     try
         if Sys.islinux() || Sys.isapple()
@@ -384,7 +389,7 @@ function collect_system_information()
     catch
         info["memory_info"] = "unavailable"
     end
-    
+
     # Disk space
     try
         if Sys.islinux() || Sys.isapple()
@@ -397,11 +402,11 @@ function collect_system_information()
     catch
         info["disk_space"] = "unavailable"
     end
-    
+
     # Environment variables
     matlab_env_vars = ["MATLAB_PATH", "MATLAB_ROOT", "MATLAB_EXE", "PATH"]
     info["environment"] = Dict(var => get(ENV, var, "") for var in matlab_env_vars)
-    
+
     # Julia package status
     try
         # This would need to be implemented carefully
@@ -409,7 +414,7 @@ function collect_system_information()
     catch
         info["julia_packages"] = "unavailable"
     end
-    
+
     return info
 end
 
@@ -420,7 +425,7 @@ Check MATLAB availability and status.
 """
 function check_matlab_status(context::Dict)
     status = Dict{String, Any}()
-    
+
     # Check if MATLAB is in PATH
     try
         result = read(`which matlab`, String)
@@ -430,7 +435,7 @@ function check_matlab_status(context::Dict)
         status["matlab_executable"] = "not found"
         status["in_path"] = false
     end
-    
+
     # Check MATLAB version
     if status["in_path"]
         try
@@ -443,7 +448,7 @@ function check_matlab_status(context::Dict)
             status["error"] = string(e)
         end
     end
-    
+
     # Check MATLAB.jl package
     try
         # This would require careful package checking
@@ -451,7 +456,7 @@ function check_matlab_status(context::Dict)
     catch
         status["matlab_jl_available"] = false
     end
-    
+
     return status
 end
 
@@ -463,15 +468,15 @@ Check repository accessibility and status.
 function check_repository_status(context::Dict)
     status = Dict{String, Any}()
     repo_path = "./Helmholtz-adjoint-solver"
-    
+
     # Check if directory exists
     status["directory_exists"] = isdir(repo_path)
-    
+
     if status["directory_exists"]
         # Check if it's a git repository
         git_dir = joinpath(repo_path, ".git")
         status["is_git_repo"] = isdir(git_dir)
-        
+
         if status["is_git_repo"]
             try
                 # Get repository information
@@ -484,11 +489,11 @@ function check_repository_status(context::Dict)
                 status["git_error"] = string(e)
             end
         end
-        
+
         # Check for key files
         key_files = ["ConvergentBornSolver.m", "README.md"]
         status["key_files"] = Dict()
-        
+
         for file in key_files
             found = false
             for (root, dirs, files) in walkdir(repo_path)
@@ -503,7 +508,7 @@ function check_repository_status(context::Dict)
             end
         end
     end
-    
+
     return status
 end
 
@@ -593,21 +598,21 @@ function generate_diagnostic_report(error_report::ErrorReport)
 ## Contributing Factors
 
 """
-    
+
     for (i, factor) in enumerate(error_report.contributing_factors)
         report *= "$i. $factor\n"
     end
-    
+
     report *= """
 
 ## Remediation Steps
 
 """
-    
+
     for step in error_report.remediation_steps
         report *= "$step\n"
     end
-    
+
     report *= """
 
 ## System Information
@@ -627,11 +632,11 @@ function generate_diagnostic_report(error_report::ErrorReport)
 **Directory Exists:** $(get(error_report.repository_status, "directory_exists", "unknown"))
 **Git Repository:** $(get(error_report.repository_status, "is_git_repo", "unknown"))
 """
-    
+
     if haskey(error_report.repository_status, "remote_url")
         report *= "**Remote URL:** $(error_report.repository_status["remote_url"])\n"
     end
-    
+
     report *= """
 
 ## Recovery Information
@@ -643,18 +648,18 @@ function generate_diagnostic_report(error_report::ErrorReport)
 ## Prevention Measures
 
 """
-    
+
     for measure in error_report.prevention_measures
         report *= "- $measure\n"
     end
-    
+
     report *= """
 
 ---
 
 *This report was generated automatically by the FrequencyMaxwell Cross-Validation Framework Error Analysis System.*
 """
-    
+
     return report
 end
 
@@ -799,7 +804,7 @@ When seeking help, please provide:
 
 *This guide covers the most common issues. For specific technical problems, use the diagnostic tools provided with the framework.*
 """
-    
+
     return guide
 end
 

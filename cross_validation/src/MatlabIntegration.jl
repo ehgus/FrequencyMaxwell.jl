@@ -34,7 +34,7 @@ mutable struct MatlabSessionManager
     created_at::DateTime
     last_used::DateTime
     is_active::Bool
-    
+
     function MatlabSessionManager()
         new(nothing, string(uuid4()), now(), now(), false)
     end
@@ -59,25 +59,25 @@ function initialize_matlab_session()
     if !MATLAB_AVAILABLE
         error("MATLAB.jl is not available. Please install it with: using Pkg; Pkg.add(\"MATLAB\")")
     end
-    
+
     @info "Initializing MATLAB session..."
-    
+
     try
         # Import MATLAB functions (already imported globally)
         session = MATLAB.MSession()
-        
+
         # Test basic functionality
         MATLAB.eval_string(session, "fprintf('MATLAB session initialized successfully\\n')")
-        
+
         # Create session manager
         manager = MatlabSessionManager()
         manager.session = session
         manager.is_active = true
         manager.last_used = now()
-        
+
         @info "MATLAB session initialized successfully"
         return manager
-        
+
     catch e
         @error "Failed to initialize MATLAB session" exception=e
         rethrow(e)

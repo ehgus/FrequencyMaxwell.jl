@@ -57,48 +57,49 @@ phantom = phantom_bead(
 ```
 """
 function phantom_bead(
-    grid_size::NTuple{3, Int},
-    permittivity_profile::AbstractVector{<:Number},
-    pixel_radius::Real;
-    bead_distance::Real = 2 * pixel_radius,
-    array_type::Type{<:AbstractArray} = Array
+        grid_size::NTuple{3, Int},
+        permittivity_profile::AbstractVector{<:Number},
+        pixel_radius::Real;
+        bead_distance::Real = 2 * pixel_radius,
+        array_type::Type{<:AbstractArray} = Array
 )
     # Validate inputs
     all(grid_size .> 0) || throw(ArgumentError("grid_size must have positive dimensions"))
     pixel_radius > 0 || throw(ArgumentError("pixel_radius must be positive"))
-    !isempty(permittivity_profile) || throw(ArgumentError("permittivity_profile cannot be empty"))
+    !isempty(permittivity_profile) ||
+        throw(ArgumentError("permittivity_profile cannot be empty"))
     num_bead = length(permittivity_profile)
-    
+
     # Determine output type
     T = real(eltype(promote_type(eltype(permittivity_profile), typeof(pixel_radius))))
     T <: AbstractFloat || (T = Float64)
-    
+
     # Initialize phantom with background permittivity
     phantom = array_type(ones(Complex{T}, grid_size))
-    
+
     # Calculate grid center
     center = ntuple(i -> (grid_size[i] + 1) / 2, 3)
-    
+
     # Place beads along Z-axis
     for bead_idx in 1:num_bead
         # Bead center position
         z_offset = (bead_idx - (num_bead + 1) / 2) * bead_distance
         bead_center = (center[1], center[2], center[3] + z_offset)
-        
+
         # Ensure bead is within grid bounds
         if bead_center[3] < 1 || bead_center[3] > grid_size[3]
             @warn "Bead $bead_idx is outside grid bounds, skipping"
             continue
         end
-        
+
         # Get permittivity for this bead (cycle through profile)
         perm_idx = ((bead_idx - 1) % length(permittivity_profile)) + 1
         bead_permittivity = Complex{T}(permittivity_profile[perm_idx])
-        
+
         # Fill spherical region
         _fill_sphere!(phantom, bead_center, pixel_radius, bead_permittivity)
     end
-    
+
     return phantom
 end
 
@@ -148,34 +149,35 @@ phantom = phantom_plate(
 ```
 """
 function phantom_plate(
-    grid_size::NTuple{3, Int},
-    permittivity_profile::AbstractVector{<:Number},
-    thickness_pixel::Real;
-    plate_normal::Int = 3,
-    array_type::Type{<:AbstractArray} = Array
+        grid_size::NTuple{3, Int},
+        permittivity_profile::AbstractVector{<:Number},
+        thickness_pixel::Real;
+        plate_normal::Int = 3,
+        array_type::Type{<:AbstractArray} = Array
 )
     # Validate inputs
     all(grid_size .> 0) || throw(ArgumentError("grid_size must have positive dimensions"))
     thickness_pixel > 0 || throw(ArgumentError("thickness_pixel must be positive"))
     1 ≤ plate_normal ≤ 3 || throw(ArgumentError("plate_normal must be 1, 2, or 3"))
-    !isempty(permittivity_profile) || throw(ArgumentError("permittivity_profile cannot be empty"))
-    
+    !isempty(permittivity_profile) ||
+        throw(ArgumentError("permittivity_profile cannot be empty"))
+
     # Determine output type
     T = real(eltype(promote_type(eltype(permittivity_profile), typeof(thickness_pixel))))
     T <: AbstractFloat || (T = Float64)
-    
+
     # Initialize phantom with background permittivity
     phantom = array_type(ones(Complex{T}, grid_size))
-    
+
     # Get plate permittivity (use first value from profile)
     plate_permittivity = Complex{T}(permittivity_profile[1])
-    
+
     # Calculate plate bounds along normal direction
     center_pos = (grid_size[plate_normal] + 1) / 2
     half_thickness = thickness_pixel / 2
     start_pos = max(1, round(Int, center_pos - half_thickness))
     end_pos = min(grid_size[plate_normal], round(Int, center_pos + half_thickness))
-    
+
     # Fill plate region
     if plate_normal == 1  # X-normal plate
         phantom[start_pos:end_pos, :, :] .= plate_permittivity
@@ -184,7 +186,7 @@ function phantom_plate(
     else  # Z-normal plate (default)
         phantom[:, :, start_pos:end_pos] .= plate_permittivity
     end
-    
+
     return phantom
 end
 
@@ -200,32 +202,31 @@ This is an internal helper function that efficiently fills spherical regions
 by iterating only over the bounding box and checking distances.
 """
 function _fill_sphere!(
-    phantom::AbstractArray{Complex{T}, 3},
-    center::NTuple{3, Real},
-    radius::Real,
-    permittivity::Complex{T}
-) where T
-    
+        phantom::AbstractArray{Complex{T}, 3},
+        center::NTuple{3, Real},
+        radius::Real,
+        permittivity::Complex{T}
+) where {T}
     grid_size = size(phantom)
     radius_sq = radius^2
-    
+
     # Calculate bounding box to minimize iterations
     bbox_min = ntuple(i -> max(1, round(Int, center[i] - radius)), 3)
     bbox_max = ntuple(i -> min(grid_size[i], round(Int, center[i] + radius)), 3)
-    
+
     # Fill spherical region
     for k in bbox_min[3]:bbox_max[3]
         dz = k - center[3]
         dz_sq = dz * dz
-        
+
         for j in bbox_min[2]:bbox_max[2]
             dy = j - center[2]
             dy_sq = dy * dy
-            
+
             for i in bbox_min[1]:bbox_max[1]
                 dx = i - center[1]
                 dx_sq = dx * dx
-                
+
                 # Check if point is inside sphere
                 if dx_sq + dy_sq + dz_sq ≤ radius_sq
                     phantom[i, j, k] = permittivity
@@ -233,7 +234,7 @@ function _fill_sphere!(
             end
         end
     end
-    
+
     return nothing
 end
 
@@ -259,58 +260,60 @@ Generate a phantom containing a cylindrical scatterer.
 - `phantom::AbstractArray{Complex{T}, 3}`: 3D permittivity distribution
 """
 function phantom_cylinder(
-    grid_size::NTuple{3, Int},
-    permittivity_profile::AbstractVector{<:Number},
-    radius_pixel::Real;
-    height_pixel::Real = 2 * radius_pixel,
-    axis::Int = 3,
-    array_type::Type{<:AbstractArray} = Array
+        grid_size::NTuple{3, Int},
+        permittivity_profile::AbstractVector{<:Number},
+        radius_pixel::Real;
+        height_pixel::Real = 2 * radius_pixel,
+        axis::Int = 3,
+        array_type::Type{<:AbstractArray} = Array
 )
     # Validate inputs
     all(grid_size .> 0) || throw(ArgumentError("grid_size must have positive dimensions"))
     radius_pixel > 0 || throw(ArgumentError("radius_pixel must be positive"))
     height_pixel > 0 || throw(ArgumentError("height_pixel must be positive"))
     1 ≤ axis ≤ 3 || throw(ArgumentError("axis must be 1, 2, or 3"))
-    !isempty(permittivity_profile) || throw(ArgumentError("permittivity_profile cannot be empty"))
-    
+    !isempty(permittivity_profile) ||
+        throw(ArgumentError("permittivity_profile cannot be empty"))
+
     # Determine output type
     T = real(eltype(promote_type(eltype(permittivity_profile), typeof(radius_pixel))))
     T <: AbstractFloat || (T = Float64)
-    
+
     # Initialize phantom
     phantom = array_type(ones(Complex{T}, grid_size))
-    
+
     # Get cylinder permittivity (use first value from profile)
     cyl_permittivity = Complex{T}(permittivity_profile[1])
-    
+
     # Get grid center
     center = ntuple(i -> (grid_size[i] + 1) / 2, 3)
-    
+
     # Calculate cylinder bounds
     half_height = height_pixel / 2
     axis_start = max(1, round(Int, center[axis] - half_height))
     axis_end = min(grid_size[axis], round(Int, center[axis] + half_height))
-    
+
     # Fill cylindrical region
-    _fill_cylinder!(phantom, center, radius_pixel, axis_start, axis_end, axis, cyl_permittivity)
-    
+    _fill_cylinder!(
+        phantom, center, radius_pixel, axis_start, axis_end, axis, cyl_permittivity)
+
     return phantom
 end
 function _fill_cylinder!(
-    phantom::AbstractArray{Complex{T}, 3},
-    center::NTuple{3, Real},
-    radius::Real,
-    axis_start::Int,
-    axis_end::Int,
-    axis::Int,
-    permittivity::Complex{T}
-) where T
-    
+        phantom::AbstractArray{Complex{T}, 3},
+        center::NTuple{3, Real},
+        radius::Real,
+        axis_start::Int,
+        axis_end::Int,
+        axis::Int,
+        permittivity::Complex{T}
+) where {T}
     radius_sq = radius^2
-    
+
     if axis == 1  # X-axis cylinder
         for i in axis_start:axis_end
             for j in 1:size(phantom, 2), k in 1:size(phantom, 3)
+
                 dy = j - center[2]
                 dz = k - center[3]
                 if dy*dy + dz*dz ≤ radius_sq
@@ -321,6 +324,7 @@ function _fill_cylinder!(
     elseif axis == 2  # Y-axis cylinder
         for j in axis_start:axis_end
             for i in 1:size(phantom, 1), k in 1:size(phantom, 3)
+
                 dx = i - center[1]
                 dz = k - center[3]
                 if dx*dx + dz*dz ≤ radius_sq
@@ -331,6 +335,7 @@ function _fill_cylinder!(
     else  # Z-axis cylinder (default)
         for k in axis_start:axis_end
             for i in 1:size(phantom, 1), j in 1:size(phantom, 2)
+
                 dx = i - center[1]
                 dy = j - center[2]
                 if dx*dx + dy*dy ≤ radius_sq
@@ -339,6 +344,6 @@ function _fill_cylinder!(
             end
         end
     end
-    
+
     return nothing
 end

@@ -67,7 +67,7 @@ config = ConvergentBornConfig(
 )
 ```
 """
-struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
+struct ConvergentBornConfig{T <: AbstractFloat} <: AbstractMaxwellConfig{T}
     wavelength::T
     permittivity_bg::T
     resolution::NTuple{3, T}
@@ -82,31 +82,33 @@ struct ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
     linear_solver::Symbol
     linear_solver_options::Dict{Symbol, Any}
     preconditioner::Symbol
-    
+
     function ConvergentBornConfig{T}(
-        wavelength::T,
-        permittivity_bg::T,
-        resolution::NTuple{3, T},
-        grid_size::NTuple{3, Int},
-        use_abbe_sine::Bool,
-        boundary_thickness::NTuple{3, T},
-        field_attenuation::NTuple{3, T},
-        field_attenuation_sharpness::T,
-        periodic_boundary::NTuple{3, Bool},
-        iterations_max::Int,
-        tolerance::T,
-        linear_solver::Symbol,
-        linear_solver_options::Dict{Symbol, Any},
-        preconditioner::Symbol
-    ) where T<:AbstractFloat
-        
+            wavelength::T,
+            permittivity_bg::T,
+            resolution::NTuple{3, T},
+            grid_size::NTuple{3, Int},
+            use_abbe_sine::Bool,
+            boundary_thickness::NTuple{3, T},
+            field_attenuation::NTuple{3, T},
+            field_attenuation_sharpness::T,
+            periodic_boundary::NTuple{3, Bool},
+            iterations_max::Int,
+            tolerance::T,
+            linear_solver::Symbol,
+            linear_solver_options::Dict{Symbol, Any},
+            preconditioner::Symbol
+    ) where {T <: AbstractFloat}
+
         # Validate parameters
         wavelength > 0 || throw(ArgumentError("wavelength must be positive"))
         permittivity_bg > 0 || throw(ArgumentError("permittivity_bg must be positive"))
-        all(resolution .> 0) || throw(ArgumentError("all resolution components must be positive"))
-        all(grid_size .> 0) || throw(ArgumentError("all grid_size components must be positive"))
+        all(resolution .> 0) ||
+            throw(ArgumentError("all resolution components must be positive"))
+        all(grid_size .> 0) ||
+            throw(ArgumentError("all grid_size components must be positive"))
         0 ≤ tolerance ≤ 1 || throw(ArgumentError("tolerance must be in [0, 1]"))
-        
+
         return new{T}(
             wavelength, permittivity_bg, resolution, grid_size,
             use_abbe_sine, boundary_thickness, field_attenuation, field_attenuation_sharpness,
@@ -118,30 +120,30 @@ end
 
 # Main constructor with automatic type promotion
 function ConvergentBornConfig(;
-    wavelength::Real,
-    permittivity_bg::Real = 1.0,
-    resolution::NTuple{3, <:Real},
-    grid_size::NTuple{3, Int},
-    use_abbe_sine::Bool = true,
-    boundary_thickness::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
-    field_attenuation::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
-    field_attenuation_sharpness::Real = 1.0,
-    periodic_boundary::NTuple{3, Bool} = (true, true, false),
-    iterations_max::Int = -1,
-    tolerance::Real = 1e-6,
-    linear_solver::Symbol = :iterative,
-    linear_solver_options::Dict{Symbol, Any} = Dict{Symbol, Any}(),
-    preconditioner::Symbol = :none
+        wavelength::Real,
+        permittivity_bg::Real = 1.0,
+        resolution::NTuple{3, <:Real},
+        grid_size::NTuple{3, Int},
+        use_abbe_sine::Bool = true,
+        boundary_thickness::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
+        field_attenuation::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
+        field_attenuation_sharpness::Real = 1.0,
+        periodic_boundary::NTuple{3, Bool} = (true, true, false),
+        iterations_max::Int = -1,
+        tolerance::Real = 1e-6,
+        linear_solver::Symbol = :iterative,
+        linear_solver_options::Dict{Symbol, Any} = Dict{Symbol, Any}(),
+        preconditioner::Symbol = :none
 )
     # Promote to common floating-point type
-    T = promote_type(typeof(wavelength), typeof(permittivity_bg), 
-                     eltype(resolution), eltype(boundary_thickness), 
-                     eltype(field_attenuation), typeof(field_attenuation_sharpness), typeof(tolerance))
+    T = promote_type(typeof(wavelength), typeof(permittivity_bg),
+        eltype(resolution), eltype(boundary_thickness),
+        eltype(field_attenuation), typeof(field_attenuation_sharpness), typeof(tolerance))
     T <: AbstractFloat || (T = Float64)  # Fallback to Float64 if not floating-point
-    
+
     return ConvergentBornConfig{T}(
-        T(wavelength), T(permittivity_bg), 
-        T.(resolution), grid_size, use_abbe_sine, 
+        T(wavelength), T(permittivity_bg),
+        T.(resolution), grid_size, use_abbe_sine,
         T.(boundary_thickness), T.(field_attenuation), T(field_attenuation_sharpness),
         periodic_boundary, iterations_max, T(tolerance),
         linear_solver, linear_solver_options, preconditioner
@@ -160,7 +162,7 @@ grid_spacing(config::ConvergentBornConfig) = config.resolution
 
 Calculate the total physical domain size in each direction.
 """
-function domain_size(config::ConvergentBornConfig{T}) where T
+function domain_size(config::ConvergentBornConfig{T}) where {T}
     return ntuple(i -> config.grid_size[i] * config.resolution[i], 3)
 end
 
@@ -169,7 +171,7 @@ end
 
 Calculate the background medium wavenumber k₀ = 2π√(εᵦ)/λ₀.
 """
-function wavenumber_background(config::ConvergentBornConfig{T}) where T
+function wavenumber_background(config::ConvergentBornConfig{T}) where {T}
     return T(2π) * sqrt(config.permittivity_bg) / config.wavelength
 end
 
@@ -178,7 +180,7 @@ end
 
 Custom display for configuration objects with formatted output.
 """
-function Base.show(io::IO, config::ConvergentBornConfig{T}) where T
+function Base.show(io::IO, config::ConvergentBornConfig{T}) where {T}
     print(io, "ConvergentBornConfig{$T}:")
     print(io, "\n  wavelength: $(config.wavelength)")
     print(io, "\n  permittivity_bg: $(config.permittivity_bg)")

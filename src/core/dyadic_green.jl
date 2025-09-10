@@ -19,7 +19,7 @@ Dyadic Green's function operator for electromagnetic field computation.
 - `freq_res::NTuple{3, T}`: Frequency resolution for each spatial dimension
 - `subpixel_shift::NTuple{3, T}`: Subpixel shift for boundary condition handling
 """
-struct DyadicGreen{T<:Real}
+struct DyadicGreen{T <: Real}
     array_type::Type{<:AbstractArray}
     k_square::Complex{T}
     freq_res::NTuple{3, T}
@@ -38,8 +38,8 @@ Construct a DyadicGreen operator.
 - `resolution`: Spatial resolution (dx, dy, dz)
 - `subpixel_shift`: Subpixel shift for boundary conditions
 """
-function DyadicGreen(array_type::Type, k_square::Number, arr_size::NTuple{3, <:Integer}, 
-                    resolution::NTuple{3, <:Real}, subpixel_shift::NTuple{3, <:Real})
+function DyadicGreen(array_type::Type, k_square::Number, arr_size::NTuple{3, <:Integer},
+        resolution::NTuple{3, <:Real}, subpixel_shift::NTuple{3, <:Real})
     T = real(typeof(k_square))
     # Calculate frequency resolution: Δk = 2π/(N*Δx)
     freq_res = 2π ./ (arr_size .* resolution)
@@ -70,19 +70,19 @@ The convolution is performed in Fourier space for efficiency:
 function conv!(green::DyadicGreen, src::AbstractArray, dst::AbstractArray)
     # Phase ramp for subpixel boundary conditions
     multiply_phase_ramp!(green, src, do_reverse = false)
-    
+
     # Transform to frequency domain
     fft!(src, 1:3)
-    
+
     # Apply Dyadic Green's function in frequency domain
     multiply_Green!(green, dst, src)
-    
+
     # Transform back to spatial domain
     ifft!(dst, 1:3)
-    
+
     # Inverse phase ramp
     multiply_phase_ramp!(green, dst, do_reverse = true)
-    
+
     return dst
 end
 
@@ -102,15 +102,18 @@ where k² = k²ₓ + k²ᵧ + k²ᵤ and k²ₘ is the background wave number.
     # Ensure bounds (safety check)
     if i <= max_i && j <= max_j && k <= max_k
         # Extract field components
-        src1 = src[i,j,k,1]  # Ex
-        src2 = src[i,j,k,2]  # Ey  
-        src3 = src[i,j,k,3]  # Ez
+        src1 = src[i, j, k, 1]  # Ex
+        src2 = src[i, j, k, 2]  # Ey  
+        src3 = src[i, j, k, 3]  # Ez
 
         # Compute k-vector components with proper frequency centering
         # k = 2π * freq_index / domain_size, with DC at center
-        kx_val = freq_res[1] * (rem(i + floor(max_i/2) - 1, max_i) - floor(max_i/2) + subpixel_shift[1])
-        ky_val = freq_res[2] * (rem(j + floor(max_j/2) - 1, max_j) - floor(max_j/2) + subpixel_shift[2])
-        kz_val = freq_res[3] * (rem(k + floor(max_k/2) - 1, max_k) - floor(max_k/2) + subpixel_shift[3])
+        kx_val = freq_res[1] *
+                 (rem(i + floor(max_i/2) - 1, max_i) - floor(max_i/2) + subpixel_shift[1])
+        ky_val = freq_res[2] *
+                 (rem(j + floor(max_j/2) - 1, max_j) - floor(max_j/2) + subpixel_shift[2])
+        kz_val = freq_res[3] *
+                 (rem(k + floor(max_k/2) - 1, max_k) - floor(max_k/2) + subpixel_shift[3])
 
         # Compute k·E (divergence in frequency domain)
         k_dot_E = (kx_val * src1 + ky_val * src2 + kz_val * src3) / k_square
@@ -119,9 +122,9 @@ where k² = k²ₓ + k²ᵧ + k²ᵤ and k²ₘ is the background wave number.
         k_square_diff = abs(kx_val^2 + ky_val^2 + kz_val^2) - k_square
 
         # Apply dyadic Green's function: Ĝ·E = (1/(k² - k²ₘ))[E - k(k·E)/k²]
-        dst[i,j,k,1] = (src1 - kx_val * k_dot_E) / k_square_diff
-        dst[i,j,k,2] = (src2 - ky_val * k_dot_E) / k_square_diff
-        dst[i,j,k,3] = (src3 - kz_val * k_dot_E) / k_square_diff
+        dst[i, j, k, 1] = (src1 - kx_val * k_dot_E) / k_square_diff
+        dst[i, j, k, 2] = (src2 - ky_val * k_dot_E) / k_square_diff
+        dst[i, j, k, 3] = (src3 - kz_val * k_dot_E) / k_square_diff
     end
 end
 
@@ -135,11 +138,11 @@ function multiply_Green!(green::DyadicGreen, dst::AbstractArray, src::AbstractAr
 
     # Get appropriate backend for hardware
     backend = get_backend(src)
-    
+
     # Launch kernel with block size 64 (good for both CPU and GPU)
     kernel! = multiply_Green_kernel!(backend, 64)
-    kernel!(freq_res, subpixel_shift, k_square, src, dst, 
-            ndrange = size(src)[1:3])
+    kernel!(freq_res, subpixel_shift, k_square, src, dst,
+        ndrange = size(src)[1:3])
 end
 
 """
@@ -166,8 +169,8 @@ Applies exp(±i·k·r) phase ramps for subpixel boundary condition handling.
         end
 
         # Apply phase to all field components
-        for axis = 1:3
-            arr[i,j,k,axis] *= complex_phase
+        for axis in 1:3
+            arr[i, j, k, axis] *= complex_phase
         end
     end
 end
@@ -177,10 +180,10 @@ Apply phase ramp for subpixel boundary condition handling.
 """
 function multiply_phase_ramp!(green::DyadicGreen, arr::AbstractArray; do_reverse = false)
     subpixel_shift = green.subpixel_shift
-    
+
     # Get backend and launch kernel
     backend = get_backend(arr)
     kernel! = multiply_phase_ramp_kernel!(backend, 64)
-    kernel!(arr, subpixel_shift, do_reverse, 
-            ndrange = size(arr)[1:3])
+    kernel!(arr, subpixel_shift, do_reverse,
+        ndrange = size(arr)[1:3])
 end

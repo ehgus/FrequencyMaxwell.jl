@@ -47,52 +47,55 @@ Ex = fields.E[:, :, :, 1]  # X-component of electric field
 Hy = fields.H[:, :, :, 2]  # Y-component of magnetic field
 ```
 """
-struct ElectromagneticField{T<:AbstractFloat, N, AT<:AbstractArray{Complex{T}, N}}
+struct ElectromagneticField{T <: AbstractFloat, N, AT <: AbstractArray{Complex{T}, N}}
     E::AT
     H::AT
     grid_size::NTuple{3, Int}
     resolution::NTuple{3, T}
     wavelength::T
-    
+
     function ElectromagneticField{T, N, AT}(
-        E::AT,
-        H::AT,
-        grid_size::NTuple{3, Int},
-        resolution::NTuple{3, T},
-        wavelength::T
-    ) where {T<:AbstractFloat, N, AT<:AbstractArray{Complex{T}, N}}
-        
+            E::AT,
+            H::AT,
+            grid_size::NTuple{3, Int},
+            resolution::NTuple{3, T},
+            wavelength::T
+    ) where {T <: AbstractFloat, N, AT <: AbstractArray{Complex{T}, N}}
+
         # Validate field array dimensions
         size(E) == size(H) || throw(ArgumentError("E and H arrays must have same size"))
-        
+
         # For 4D arrays (3D space + 3 components), check grid consistency
         if N == 4
-            size(E)[1:3] == grid_size || throw(ArgumentError("field array spatial dimensions must match grid_size"))
-            size(E)[4] == 3 || throw(ArgumentError("field arrays must have 3 components in last dimension"))
+            size(E)[1:3] == grid_size ||
+                throw(ArgumentError("field array spatial dimensions must match grid_size"))
+            size(E)[4] == 3 ||
+                throw(ArgumentError("field arrays must have 3 components in last dimension"))
         end
-        
+
         # Validate physical parameters
-        all(grid_size .> 0) || throw(ArgumentError("grid_size must have positive dimensions"))
+        all(grid_size .> 0) ||
+            throw(ArgumentError("grid_size must have positive dimensions"))
         all(resolution .> 0) || throw(ArgumentError("resolution must be positive"))
         wavelength > 0 || throw(ArgumentError("wavelength must be positive"))
-        
+
         return new{T, N, AT}(E, H, grid_size, resolution, wavelength)
     end
 end
 
 # Convenience constructor with automatic type inference
 function ElectromagneticField(
-    E::AbstractArray{Complex{T}, N},
-    H::AbstractArray{Complex{T}, N},
-    grid_size::NTuple{3, Int},
-    resolution::NTuple{3, <:Real},
-    wavelength::Real
-) where {T<:AbstractFloat, N}
-    
+        E::AbstractArray{Complex{T}, N},
+        H::AbstractArray{Complex{T}, N},
+        grid_size::NTuple{3, Int},
+        resolution::NTuple{3, <:Real},
+        wavelength::Real
+) where {T <: AbstractFloat, N}
+
     # Promote resolution and wavelength to match field precision
     resolution_T = NTuple{3, T}(T.(resolution))
     wavelength_T = T(wavelength)
-    
+
     AT = typeof(E)
     return ElectromagneticField{T, N, AT}(E, H, grid_size, resolution_T, wavelength_T)
 end
@@ -102,7 +105,7 @@ end
 
 Calculate the total physical domain size.
 """
-function domain_size(fields::ElectromagneticField{T}) where T
+function domain_size(fields::ElectromagneticField{T}) where {T}
     return ntuple(i -> fields.grid_size[i] * fields.resolution[i], 3)
 end
 
@@ -116,20 +119,20 @@ u = (1/2) * (ε₀|E|² + μ₀|H|²)
 
 For simplicity, this assumes vacuum permittivity and permeability.
 """
-function field_energy(fields::ElectromagneticField{T}) where T
+function field_energy(fields::ElectromagneticField{T}) where {T}
     ε₀ = T(8.854187817e-12)  # Vacuum permittivity (F/m)
     μ₀ = T(4π * 1e-7)        # Vacuum permeability (H/m)
-    
+
     # Calculate |E|² and |H|² summed over components
     E_energy = sum(abs2, fields.E)
     H_energy = sum(abs2, fields.H)
-    
+
     # Total energy density
     energy_density = (ε₀ * E_energy + μ₀ * H_energy) / 2
-    
+
     # Multiply by voxel volume
     voxel_volume = prod(fields.resolution)
-    
+
     return energy_density * voxel_volume
 end
 
@@ -141,22 +144,22 @@ Calculate the complex Poynting vector S = E × H*.
 Returns an array with the same spatial dimensions as the input fields,
 with the last dimension representing the 3 vector components.
 """
-function poynting_vector(fields::ElectromagneticField{T, 4}) where T
+function poynting_vector(fields::ElectromagneticField{T, 4}) where {T}
     # Get field components
     Ex, Ey, Ez = fields.E[:, :, :, 1], fields.E[:, :, :, 2], fields.E[:, :, :, 3]
     Hx, Hy, Hz = fields.H[:, :, :, 1], fields.H[:, :, :, 2], fields.H[:, :, :, 3]
-    
+
     # Calculate S = E × H* (complex conjugate of H)
     Sx = Ey .* conj.(Hz) .- Ez .* conj.(Hy)
     Sy = Ez .* conj.(Hx) .- Ex .* conj.(Hz)
     Sz = Ex .* conj.(Hy) .- Ey .* conj.(Hx)
-    
+
     # Combine into 4D array
     S = similar(fields.E)
     S[:, :, :, 1] = Sx
     S[:, :, :, 2] = Sy
     S[:, :, :, 3] = Sz
-    
+
     return S
 end
 
@@ -172,9 +175,9 @@ Calculate the field intensity |E|² or individual component intensities.
 # Returns
 - `intensity::AbstractArray{T, 3}`: Field intensity distribution
 """
-function field_intensity(fields::ElectromagneticField{T, 4}; component::Symbol = :total) where T
+function field_intensity(fields::ElectromagneticField{T, 4}; component::Symbol = :total) where {T}
     if component == :total
-        return sum(abs2, fields.E; dims=4)[:, :, :, 1]
+        return sum(abs2, fields.E; dims = 4)[:, :, :, 1]
     elseif component == :x
         return abs2.(fields.E[:, :, :, 1])
     elseif component == :y
@@ -200,34 +203,37 @@ Extract a 2D plane from the 3D electromagnetic field.
 - `plane_fields::ElectromagneticField`: 2D electromagnetic field on the specified plane
 """
 function extract_plane(
-    fields::ElectromagneticField{T, 4},
-    plane_axis::Int,
-    plane_index::Int
-) where T
-    
+        fields::ElectromagneticField{T, 4},
+        plane_axis::Int,
+        plane_index::Int
+) where {T}
     1 ≤ plane_axis ≤ 3 || throw(ArgumentError("plane_axis must be 1, 2, or 3"))
-    1 ≤ plane_index ≤ fields.grid_size[plane_axis] || 
+    1 ≤ plane_index ≤ fields.grid_size[plane_axis] ||
         throw(ArgumentError("plane_index out of bounds"))
-    
+
     # Extract plane data
     if plane_axis == 1  # YZ plane
         E_plane = fields.E[plane_index:plane_index, :, :, :]
         H_plane = fields.H[plane_index:plane_index, :, :, :]
         plane_grid_size = (1, fields.grid_size[2], fields.grid_size[3])
-        plane_resolution = (fields.resolution[1], fields.resolution[2], fields.resolution[3])
+        plane_resolution = (
+            fields.resolution[1], fields.resolution[2], fields.resolution[3])
     elseif plane_axis == 2  # XZ plane
         E_plane = fields.E[:, plane_index:plane_index, :, :]
         H_plane = fields.H[:, plane_index:plane_index, :, :]
         plane_grid_size = (fields.grid_size[1], 1, fields.grid_size[3])
-        plane_resolution = (fields.resolution[1], fields.resolution[2], fields.resolution[3])
+        plane_resolution = (
+            fields.resolution[1], fields.resolution[2], fields.resolution[3])
     else  # XY plane
         E_plane = fields.E[:, :, plane_index:plane_index, :]
         H_plane = fields.H[:, :, plane_index:plane_index, :]
         plane_grid_size = (fields.grid_size[1], fields.grid_size[2], 1)
-        plane_resolution = (fields.resolution[1], fields.resolution[2], fields.resolution[3])
+        plane_resolution = (
+            fields.resolution[1], fields.resolution[2], fields.resolution[3])
     end
-    
-    return ElectromagneticField(E_plane, H_plane, plane_grid_size, plane_resolution, fields.wavelength)
+
+    return ElectromagneticField(
+        E_plane, H_plane, plane_grid_size, plane_resolution, fields.wavelength)
 end
 
 """
