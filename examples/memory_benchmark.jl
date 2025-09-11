@@ -24,6 +24,7 @@ the refactored multi-source API for realistic memory profiling.
 """
 
 using FrequencyMaxwell
+using LinearSolve
 using LinearAlgebra
 using Printf
 using Statistics
@@ -128,7 +129,8 @@ function create_solver_config(benchmark_config::BenchmarkConfig, grid_size::Tupl
         field_attenuation_sharpness = 1.0,
         periodic_boundary = (true, true, false),        # Periodic in XY, absorbing in Z
         iterations_max = benchmark_config.iterations_max,
-        tolerance = benchmark_config.tolerance
+        tolerance = benchmark_config.tolerance,
+        linear_solver = KrylovJL_GMRES()               # Direct LinearSolver object
     )
 end
 

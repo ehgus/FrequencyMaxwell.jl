@@ -6,6 +6,7 @@ electromagnetic scattering from a simple spherical bead phantom.
 """
 
 using FrequencyMaxwell
+using LinearSolve
 using WGLMakie
 
 function main()
@@ -24,8 +25,8 @@ function main()
         field_attenuation_sharpness = 1.0,
         periodic_boundary = (true, true, false),   # Periodic in XY, absorbing in Z
         iterations_max = -1,       # Auto-calculate optimal iterations
-        tolerance = 1e-6,          # Convergence tolerance
-        linear_solver = :gmres
+        tolerance = 1e-2,          # Convergence tolerance
+        linear_solver = KrylovJL_GMRES()  # LinearSolver object
     )
 
     println("Configuration:")

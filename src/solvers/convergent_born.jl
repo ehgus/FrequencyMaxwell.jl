@@ -5,10 +5,6 @@ This module provides the main electromagnetic solver using the Convergent Born
 Iterative Method (CBS) with LinearSolve.jl integration and AD compatibility.
 """
 
-# Import LinearSolve algorithms for the algorithm mapping function
-using LinearSolve: KrylovJL_GMRES, KrylovJL_BICGSTAB, KrylovJL_CG,
-                   KrylovJL_MINRES, KrylovJL_LSMR, KrylovJL_CRAIGMR
-
 """
     ConvergentBornSolver{T, AT, FT} <: AbstractElectromagneticSolver{T}
 
@@ -247,7 +243,7 @@ sources = [source1, source2, source3]
 E_field, H_field = solve(solver, sources, permittivity)
 ```
 """
-function solve(
+function LinearSolve.solve(
         solver::ConvergentBornSolver{T, AT, FT},
         sources::Union{AbstractCurrentSource{T}, Vector{<:AbstractCurrentSource{T}}},
         permittivity::AbstractArray{<:Number, 3}
@@ -552,17 +548,27 @@ function _fill_plane_wave_fields!(
 end
 
 """
-    _solve_cbs_scattering(solver, source)
+    _solve_cbs_scattering(solver, source) -> (E_field, H_field)
 
-Solve the electromagnetic scattering equation using either iterative CBS or LinearSolve.jl.
+Solve the electromagnetic scattering problem using LinearSolve.jl CBS implementation.
 
-Dispatches to appropriate implementation based on solver configuration:
-- `:iterative`: Traditional CBS iteration method
-- Other algorithms: LinearSolve.jl reformulation as linear system (I - A) * Field = Field_0
+This function reformulates the Convergent Born Series as a linear system (I - A) * Field = Field_0
+and leverages the user-configured LinearSolver algorithm for efficient solution.
+
+# Mathematical Foundation
+- Traditional CBS: Field_{n+1} = Field_0 + A * Field_n  
+- Reformulated: (I - A) * Field_total = Field_0
+- Where A = V * (G + G_flip)/2 * (i/ε_imag) * V
+
+# Performance Benefits
+- Uses configured LinearSolver objects (KrylovJL_GMRES, KrylovJL_BICGSTAB, etc.)
+- Adaptive convergence criteria with user-configurable tolerances
+- Advanced preconditioning strategies through LinearSolver object parameters
+- Significant speedup potential over fixed iterations
 
 # Arguments
-- `solver::ConvergentBornSolver`: Configured solver instance
-- `source::AbstractArray{Complex{T}, 4}`: Source term array
+- `solver::ConvergentBornSolver`: Configured CBS solver instance
+- `source::AbstractArray{Complex{T}, 4}`: Incident source field array (nx, ny, nz, 3)
 
 # Returns
 - `(E_field, H_field)`: Tuple of electric and magnetic field arrays
@@ -571,11 +577,77 @@ function _solve_cbs_scattering(
         solver::ConvergentBornSolver{T, AT, FT},
         source::AbstractArray{Complex{T}, 4}
 ) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
-    if solver.config.linear_solver == :iterative
-        return _solve_cbs_iterative(solver, source)
-    else
-        return _solve_cbs_linearsolve(solver, source)
+
+    # Prepare right-hand side: Field_0 from first CBS iteration  
+    size_field = size(source)
+    Green_fn = solver.Green_function
+    flip_Green_fn = solver.flip_Green_function
+    psi = zeros(Complex{T}, size_field)
+    flip_psi = zeros(Complex{T}, size_field)
+    rhs = zeros(Complex{T}, size_field)
+
+    if solver.Bornmax >= 1
+        # Compute Field_0: first iteration of CBS
+        # Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * source
+        source_scaled = source .* (Complex{T}(0, 1) / solver.eps_imag)
+        _apply_attenuation_masks!(source_scaled, solver.field_attenuation_masks)
+        psi .= source_scaled
+
+        # Apply Green's functions: (G + G_flip)/2
+        flip_psi .= psi
+        conv!(Green_fn, psi)
+        conv!(flip_Green_fn, flip_psi)
+        psi .+= flip_psi
+        psi ./= 2
+
+        # Apply potential: Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * source
+        rhs .= solver.potential .* psi
+        _apply_attenuation_masks!(rhs, solver.field_attenuation_masks)
+
+        # Set up LinearSolve.jl problem
+        # Flatten arrays for LinearSolve.jl compatibility
+        rhs_vec = copy(vec(rhs))
+        x0_vec = copy(vec(rhs))  # Initial guess: use first CBS iteration
+        # Create linear operator (I - A)
+        linear_op = CBSLinearOperator(solver)
+
+        # Create linear problem
+        prob = LinearProblem(linear_op, rhs_vec; u0 = x0_vec)
+
+        # Use configured LinearSolver algorithm
+        algorithm = solver.config.linear_solver
+
+        # Set solver options
+        solver_options = Dict{Symbol, Any}(
+            :reltol => solver.config.tolerance,
+            :abstol => solver.config.tolerance * 1e-2,
+            :maxiters => max(solver.Bornmax * 2, 100)  # More flexible iteration limit
+        )
+
+        # Solve linear system with error handling and fallback
+        sol = LinearSolve.solve(prob, algorithm; solver_options...)
+
+        # Check convergence status
+        if !SciMLBase.successful_retcode(sol.retcode)
+            @warn "LinearSolve.jl did not converge."
+        end
+
+        # Reshape solution back to field array
+        Field = reshape(sol.u, size_field)
+
+        # Update solver statistics if available
+        if hasfield(typeof(sol), :iters)
+            solver.iteration_count = sol.iters
+        end
+        if hasfield(typeof(sol), :resid)
+            push!(solver.residual_history, sol.resid)
+        end
     end
+
+    # Compute magnetic field using same method as iterative version
+    Hfield = _compute_magnetic_field(solver, Field)
+
+    return Field, Hfield
 end
 
 """
@@ -643,135 +715,6 @@ function _solve_cbs_iterative(
     Hfield = _compute_magnetic_field(solver, Field)
 
     return Field, Hfield
-end
-
-"""
-    _solve_cbs_linearsolve(solver, source)
-
-LinearSolve.jl implementation of CBS as linear system (I - A) * Field = Field_0.
-
-This reformulates the geometric series ψ = ψ₀ + A*ψ₀ + A²*ψ₀ + ... as the 
-linear system (I - A) * ψ = ψ₀, enabling advanced linear algebra backends.
-
-# Mathematical Foundation
-- Traditional CBS: Field_{n+1} = Field_0 + A * Field_n
-- Reformulated: (I - A) * Field_total = Field_0
-- Where A = V * (G + G_flip)/2 * (i/ε_imag) * V
-
-# Performance Benefits
-- Leverages optimized Krylov solvers (GMRES, BiCGSTAB, etc.)
-- Adaptive convergence criteria
-- Advanced preconditioning strategies
-- Potential for significant speedup over fixed iterations
-"""
-function _solve_cbs_linearsolve(
-        solver::ConvergentBornSolver{T, AT, FT},
-        source::AbstractArray{Complex{T}, 4}
-) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
-
-    # Prepare right-hand side: Field_0 from first CBS iteration  
-    size_field = size(source)
-    Green_fn = solver.Green_function
-    flip_Green_fn = solver.flip_Green_function
-    psi = zeros(Complex{T}, size_field)
-    flip_psi = zeros(Complex{T}, size_field)
-    rhs = zeros(Complex{T}, size_field)
-
-    if solver.Bornmax >= 1
-        # Compute Field_0: first iteration of CBS
-        # Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * source
-        source_scaled = source .* (Complex{T}(0, 1) / solver.eps_imag)
-        _apply_attenuation_masks!(source_scaled, solver.field_attenuation_masks)
-        psi .= source_scaled
-
-        # Apply Green's functions: (G + G_flip)/2
-        flip_psi .= psi
-        conv!(Green_fn, psi)
-        conv!(flip_Green_fn, flip_psi)
-        psi .+= flip_psi
-        psi ./= 2
-
-        # Apply potential: Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * source
-        rhs .= solver.potential .* psi
-        _apply_attenuation_masks!(rhs, solver.field_attenuation_masks)
-
-        # Set up LinearSolve.jl problem
-        # Flatten arrays for LinearSolve.jl compatibility
-        rhs_vec = copy(vec(rhs))
-        x0_vec = copy(vec(rhs))  # Initial guess: use first CBS iteration
-        # Create linear operator (I - A)
-        linear_op = CBSLinearOperator(solver)
-
-        # Create linear problem
-        prob = LinearProblem(linear_op, rhs_vec; u0 = x0_vec)
-
-        # Configure solver algorithm
-        algorithm = _get_linearsolve_algorithm(solver.config.linear_solver)
-
-        # Set solver options
-        solver_options = Dict{Symbol, Any}(
-            :reltol => solver.config.tolerance,
-            :abstol => solver.config.tolerance * 1e-2,
-            :maxiters => max(solver.Bornmax * 2, 100)  # More flexible iteration limit
-        )
-
-        # Merge user-provided options (override defaults)
-        merge!(solver_options, solver.config.linear_solver_options)
-
-        # Solve linear system with error handling and fallback
-        sol = LinearSolve.solve(prob, algorithm; solver_options...)
-
-        # Check convergence status
-        if !SciMLBase.successful_retcode(sol.retcode)
-            @warn "LinearSolve.jl did not converge."
-        end
-
-        # Reshape solution back to field array
-        Field = reshape(sol.u, size_field)
-
-        # Update solver statistics if available
-        if hasfield(typeof(sol), :iters)
-            solver.iteration_count = sol.iters
-        end
-        if hasfield(typeof(sol), :resid)
-            push!(solver.residual_history, sol.resid)
-        end
-    end
-
-    # Compute magnetic field using same method as iterative version
-    Hfield = _compute_magnetic_field(solver, Field)
-
-    return Field, Hfield
-end
-
-"""
-    _get_linearsolve_algorithm(solver_symbol::Symbol)
-
-Map solver configuration symbols to LinearSolve.jl algorithms.
-
-# Supported Algorithms
-- `:gmres`: GMRES for general non-symmetric systems
-- `:bicgstab`: BiCGSTAB for faster convergence on some problems  
-- `:cg`: Conjugate Gradient for symmetric positive definite systems
-- `:minres`: MINRES for symmetric indefinite systems
-- `:lsqr`: LSQR for least squares problems
-"""
-function _get_linearsolve_algorithm(solver_symbol::Symbol)
-    algorithm_map = Dict{Symbol, Any}(
-        :gmres => KrylovJL_GMRES(),
-        :bicgstab => KrylovJL_BICGSTAB(),
-        :cg => KrylovJL_CG(),
-        :minres => KrylovJL_MINRES(),
-        :lsmr => KrylovJL_LSMR(),
-        :craigmr => KrylovJL_CRAIGMR()
-    )
-
-    if haskey(algorithm_map, solver_symbol)
-        return algorithm_map[solver_symbol]
-    else
-        @warn "Unknown solver algorithm: $solver_symbol. Using GMRES as default."
-        return KrylovJL_GMRES()
-    end
 end
 
 """

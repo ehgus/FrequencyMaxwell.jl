@@ -5,6 +5,8 @@ This module defines immutable configuration structs that provide type-safe,
 validated parameter storage for electromagnetic solvers.
 """
 
+using LinearSolve: SciMLLinearSolveAlgorithm, KrylovJL_GMRES
+
 """
     ConvergentBornConfig{T<:AbstractFloat} <: AbstractMaxwellConfig{T}
 
@@ -28,8 +30,7 @@ implementation with a type-safe, validated parameter structure.
 - `periodic_boundary::NTuple{3, Bool}`: Periodic boundary conditions (x, y, z)
 - `iterations_max::Int`: Maximum number of Born iterations (-1 for auto)
 - `tolerance::T`: Convergence tolerance for iterative solver
-- `linear_solver::Symbol`: LinearSolve.jl algorithm (:iterative, :gmres, :bicgstab, :cg)
-- `linear_solver_options::Dict{Symbol, Any}`: Additional solver options
+- `linear_solver::SciMLLinearSolveAlgorithm`: LinearSolve.jl algorithm object (default: KrylovJL_GMRES())
 - `preconditioner::Symbol`: Preconditioning strategy (:none, :diagonal, :ilu)
 
 # Constructor
@@ -45,7 +46,8 @@ ConvergentBornConfig(;
     field_attenuation_sharpness::Real = 1.0,
     periodic_boundary::NTuple{3, Bool} = (true, true, false),
     iterations_max::Int = -1,
-    tolerance::Real = 1e-6
+    tolerance::Real = 1e-6,
+    linear_solver::Union{Nothing, SciMLLinearSolveAlgorithm} = KrylovJL_GMRES()
 )
 ```
 
@@ -79,8 +81,7 @@ struct ConvergentBornConfig{T <: AbstractFloat} <: AbstractMaxwellConfig{T}
     periodic_boundary::NTuple{3, Bool}
     iterations_max::Int
     tolerance::T
-    linear_solver::Symbol
-    linear_solver_options::Dict{Symbol, Any}
+    linear_solver::SciMLLinearSolveAlgorithm
     preconditioner::Symbol
 
     function ConvergentBornConfig{T}(
@@ -95,8 +96,7 @@ struct ConvergentBornConfig{T <: AbstractFloat} <: AbstractMaxwellConfig{T}
             periodic_boundary::NTuple{3, Bool},
             iterations_max::Int,
             tolerance::T,
-            linear_solver::Symbol,
-            linear_solver_options::Dict{Symbol, Any},
+            linear_solver::SciMLLinearSolveAlgorithm,
             preconditioner::Symbol
     ) where {T <: AbstractFloat}
 
@@ -113,7 +113,7 @@ struct ConvergentBornConfig{T <: AbstractFloat} <: AbstractMaxwellConfig{T}
             wavelength, permittivity_bg, resolution, grid_size,
             use_abbe_sine, boundary_thickness, field_attenuation, field_attenuation_sharpness,
             periodic_boundary, iterations_max, tolerance,
-            linear_solver, linear_solver_options, preconditioner
+            linear_solver, preconditioner
         )
     end
 end
@@ -131,8 +131,7 @@ function ConvergentBornConfig(;
         periodic_boundary::NTuple{3, Bool} = (true, true, false),
         iterations_max::Int = -1,
         tolerance::Real = 1e-6,
-        linear_solver::Symbol = :iterative,
-        linear_solver_options::Dict{Symbol, Any} = Dict{Symbol, Any}(),
+        linear_solver::SciMLLinearSolveAlgorithm = KrylovJL_GMRES(),
         preconditioner::Symbol = :none
 )
     # Promote to common floating-point type
@@ -146,7 +145,7 @@ function ConvergentBornConfig(;
         T.(resolution), grid_size, use_abbe_sine,
         T.(boundary_thickness), T.(field_attenuation), T(field_attenuation_sharpness),
         periodic_boundary, iterations_max, T(tolerance),
-        linear_solver, linear_solver_options, preconditioner
+        linear_solver, preconditioner
     )
 end
 

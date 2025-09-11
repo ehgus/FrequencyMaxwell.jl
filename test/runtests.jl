@@ -26,6 +26,7 @@ using FrequencyMaxwell
 
             @test_throws ArgumentError ConvergentBornConfig(
                 wavelength = 500e-9,
+                permittivity_bg = -1.0,  # Invalid permittivity
                 resolution = (50e-9, 50e-9, 50e-9),
                 grid_size = (128, 128, 32)
             )

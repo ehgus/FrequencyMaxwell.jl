@@ -22,6 +22,7 @@ horizontal k-vectors, creating characteristic interference fringes in the simula
 
 using LinearAlgebra
 using FrequencyMaxwell
+using LinearSolve
 using WGLMakie
 
 """
@@ -46,7 +47,8 @@ function test_two_beam_interference_homogeneous()
         field_attenuation_sharpness = 1.0,
         periodic_boundary = (true, true, false),
         iterations_max = -1,           # Auto-determine iterations
-        tolerance = 1e-6
+        tolerance = 1e-6,
+        linear_solver = KrylovJL_BICGSTAB()
     )
 
     solver = ConvergentBornSolver(config)

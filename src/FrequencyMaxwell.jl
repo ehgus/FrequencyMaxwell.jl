@@ -53,6 +53,10 @@ using FFTW
 using StaticArrays
 using KernelAbstractions
 using SciMLBase
+using Reexport
+
+# Reexport LinearSolve symbols to avoid name clashes
+@reexport using LinearSolve: solve
 
 # Export core types and functions
 export
