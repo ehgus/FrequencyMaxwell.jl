@@ -54,7 +54,6 @@ mutable struct ConvergentBornSolver{
     permittivity::Union{Nothing, AT}  # Original permittivity without padding
     boundary_thickness_pixel::NTuple{3, Int}
     field_attenuation_pixel::NTuple{3, Int}
-    field_attenuation_masks::Vector{FT}
     ROI::NTuple{6, Int}  # Region of interest bounds
     eps_imag::T  # Imaginary part for convergence
     Bornmax::Int  # Actual number of iterations to use
@@ -90,7 +89,6 @@ mutable struct ConvergentBornSolver{
             nothing,  # permittivity - set during solve
             boundary_thickness_pixel,
             field_attenuation_pixel,
-            FT[],     # field_attenuation_masks - computed during initialization
             ROI,
             T(0),     # eps_imag - calculated based on potential
             0,        # Bornmax - calculated automatically
@@ -166,7 +164,6 @@ function (op::CBSLinearOperator{T, AT, FT})(y, x, p, t; α = 1, β = 0) where {T
 
     # Step 1: V * x (element-wise multiplication with potential)
     psi .= solver.potential .* x_field
-    _apply_attenuation_masks!(psi, solver.field_attenuation_masks)
 
     # Step 2: (G + G_flip)/2
     flip_psi .= psi
@@ -180,7 +177,6 @@ function (op::CBSLinearOperator{T, AT, FT})(y, x, p, t; α = 1, β = 0) where {T
 
     # Step 4: apply R*
     psi .*= solver.potential
-    _apply_attenuation_masks!(psi, solver.field_attenuation_masks)
     psi .*= (Complex{T}(0, 1) / solver.eps_imag)
 
     # Flatten result back to vector
@@ -282,6 +278,16 @@ end
     _initialize_solver!(solver::ConvergentBornSolver, permittivity::AbstractArray)
 
 Initialize solver internal state for a new problem.
+
+This function prepares the solver for electromagnetic scattering calculations by:
+1. Computing the potential V = k²(ε/ε_bg - 1) with proper boundary padding
+2. Adding imaginary regularization for convergence stability  
+3. Creating field attenuation masks for boundary condition enforcement
+4. Pre-applying attenuation masks to the potential (optimization)
+5. Computing optimal iteration count and initializing Green's functions
+
+The potential pre-masking optimization ensures that subsequent field operations
+automatically include boundary attenuation without redundant mask applications.
 """
 function _initialize_solver!(
         solver::ConvergentBornSolver{T, AT, FT},
@@ -306,13 +312,8 @@ function _initialize_solver!(
     # Add imaginary part to potential for convergence
     solver.potential .-= Complex{T}(0, solver.eps_imag)
 
-    # Create field attenuation masks
-    _create_attenuation_masks!(solver)
-
-    # Apply attenuation masks to potential
-    for mask in solver.field_attenuation_masks
-        solver.potential .*= mask
-    end
+    # Apply field attenuation directly to potential (optimized to avoid storing masks)
+    _apply_attenuation_to_potential!(solver)
 
     # Calculate optimal iteration count if automatic
     if solver.config.iterations_max < 0
@@ -589,7 +590,6 @@ function _solve_cbs_scattering(
         # Compute Field_0: first iteration of CBS
         # Field_0 = (i/ε_imag) * V * (G + G_flip)/2 * source
         psi .= source
-        _apply_attenuation_masks!(psi, solver.field_attenuation_masks)
 
         # Apply Green's functions: (G + G_flip)/2
         flip_psi .= psi
@@ -600,7 +600,6 @@ function _solve_cbs_scattering(
 
         # Apply potential: Field_0 = (i/ε_imag) * V
         rhs .= solver.potential .* psi
-        _apply_attenuation_masks!(rhs, solver.field_attenuation_masks)
         rhs .*= (Complex{T}(0, 1) / solver.eps_imag)
 
         # Set up LinearSolve.jl problem
@@ -758,14 +757,16 @@ function _replicate_boundaries_4d!(
 end
 
 """
-    _create_attenuation_masks!(solver)
+    _apply_attenuation_to_potential!(solver)
 
-Create field attenuation masks to prevent boundary reflections.
+Create and apply field attenuation masks directly to the solver's potential.
+
+This optimized function combines mask creation and application into a single operation,
+eliminating the need to store intermediate mask arrays. The masks are created
+dimension-by-dimension and immediately applied to prevent boundary reflections.
 """
-function _create_attenuation_masks!(solver::ConvergentBornSolver{
+function _apply_attenuation_to_potential!(solver::ConvergentBornSolver{
         T, AT, FT}) where {T, AT, FT}
-    empty!(solver.field_attenuation_masks)
-
     for dim in 1:3
         max_L = solver.boundary_thickness_pixel[dim]
         L = min(max_L, solver.field_attenuation_pixel[dim])
@@ -787,7 +788,6 @@ function _create_attenuation_masks!(solver::ConvergentBornSolver{
                  (1 - solver.config.field_attenuation_sharpness)
 
         # Create full filter
-        padded_size = size(solver.potential)[dim]
         roi_size = solver.ROI[2 * dim] - solver.ROI[2 * dim - 1] + 1
         remaining_padding = max_L - L
 
@@ -797,24 +797,15 @@ function _create_attenuation_masks!(solver::ConvergentBornSolver{
             reverse(window)
         )
 
-        # Reshape to proper 4D field dimension (3 spatial + 1 component)
-        mask_shape = ones(Int, 4)
-        mask_shape[dim] = length(filter_1d)
-        mask_shape[4] = 1  # Broadcasting dimension for field components
-        mask = reshape(filter_1d, Tuple(mask_shape))
-
-        push!(solver.field_attenuation_masks, FT(mask))
-    end
-end
-
-"""
-    _apply_attenuation_masks!(field, masks)
-
-Apply attenuation masks to prevent boundary reflections.
-"""
-function _apply_attenuation_masks!(field::AbstractArray, masks::Vector)
-    for mask in masks
-        field .*= mask
+        # Create and apply mask directly to potential
+        # Use broadcasting to apply 1D filter along the specified dimension
+        if dim == 1
+            solver.potential .*= reshape(filter_1d, :, 1, 1)
+        elseif dim == 2
+            solver.potential .*= reshape(filter_1d, 1, :, 1)
+        else  # dim == 3
+            solver.potential .*= reshape(filter_1d, 1, 1, :)
+        end
     end
 end
 
@@ -842,7 +833,6 @@ Reset solver state for a new problem while preserving configuration.
 function reset!(solver::ConvergentBornSolver)
     solver.potential = nothing
     solver.permittivity = nothing
-    empty!(solver.field_attenuation_masks)
     solver.iteration_count = 0
     empty!(solver.residual_history)
     solver.solver_state = nothing
