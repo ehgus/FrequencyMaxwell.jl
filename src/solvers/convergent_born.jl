@@ -127,29 +127,28 @@ This operator is compatible with LinearSolve.jl for advanced linear algebra back
 
 # Fields
 - `solver::ConvergentBornSolver{T, AT, FT}`: Reference to the CBS solver
-- `temp_arrays::NTuple{3, FT}`: Preallocated temporary 4D field arrays for efficiency
+- `temp_arrays::NTuple{2, FT}`: Preallocated temporary 4D field arrays for efficiency
 """
 struct CBSLinearOperator{T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
     solver::ConvergentBornSolver{T, AT, FT}
-    temp_arrays::NTuple{3, FT}  # Preallocated temporary 4D field arrays
+    temp_arrays::NTuple{2, FT}  # Preallocated temporary 4D field arrays
 
     function CBSLinearOperator(solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
         # Preallocate temporary arrays to match field dimensions
         field_size = size(solver.potential)
         temp1 = zeros(Complex{T}, field_size..., 3)
         temp2 = zeros(Complex{T}, field_size..., 3)
-        temp3 = zeros(Complex{T}, field_size..., 3)
 
-        new{T, AT, FT}(solver, (temp1, temp2, temp3))
+        new{T, AT, FT}(solver, (temp1, temp2))
     end
 end
 
 """
     (op::CBSLinearOperator)(y, x)
 
-Apply the linear operator (I - A) to input field x, storing result in y.
+Apply the linear operator to input field x, storing result in y.
 
-This implements: y = x - A*x where A = V * (G + G_flip)/2 * (i/ε_imag) * V
+This implements: y = B*x = R*(x - A*x) where A = (G + G_flip)/2 * V and  R = (i/ε_imag) * V
 
 # Arguments
 - `y`: Output vector (flattened field array)  
@@ -157,7 +156,7 @@ This implements: y = x - A*x where A = V * (G + G_flip)/2 * (i/ε_imag) * V
 """
 function (op::CBSLinearOperator{T, AT, FT})(y, x, p, t; α = 1, β = 0) where {T, AT, FT}
     solver = op.solver
-    psi, flip_psi, temp = op.temp_arrays
+    psi, flip_psi = op.temp_arrays
 
     # Reshape flattened input to 4D field array
     field_shape = size(psi)
@@ -165,29 +164,29 @@ function (op::CBSLinearOperator{T, AT, FT})(y, x, p, t; α = 1, β = 0) where {T
 
     # Apply operator A to x: A*x = (1 - V * (G + G_flip)/2)) * (i/ε_imag) * V * x
 
-    # Step 1: (i/ε_imag) * V * x (element-wise multiplication with potential)
-    temp .= solver.potential .* x_field
-    psi .= (Complex{T}(0, 1) / solver.eps_imag) .* temp
-    temp .= psi
+    # Step 1: V * x (element-wise multiplication with potential)
+    psi .= solver.potential .* x_field
+    _apply_attenuation_masks!(psi, solver.field_attenuation_masks)
 
-    # Step 3: (G + G_flip)/2
+    # Step 2: (G + G_flip)/2
     flip_psi .= psi
     conv!(solver.Green_function, psi)
     conv!(solver.flip_Green_function, flip_psi)
     psi .+= flip_psi
     psi ./= 2
 
-    # Step 4: V
-    psi .*= solver.potential
+    # Step 3: (x - A*x) = (x - (G + G_flip)/2 * V * x)
+    psi .= x_field .- psi
 
-    # Final result: y = (1 - V * (G + G_flip)/2) * (i/ε_imag) * V * x
-    temp .-= psi
-    _apply_attenuation_masks!(temp, solver.field_attenuation_masks)
+    # Step 4: apply R*
+    psi .*= solver.potential
+    _apply_attenuation_masks!(psi, solver.field_attenuation_masks)
+    psi .*= (Complex{T}(0, 1) / solver.eps_imag)
 
     # Flatten result back to vector
-    # y = α * (I - A) * x + β * y
+    # y = α * B * x + β * y
     y .*= β
-    y .+= α .* vec(temp)
+    y .+= α .* vec(psi)
 
     return y
 end
@@ -588,10 +587,9 @@ function _solve_cbs_scattering(
 
     if solver.Bornmax >= 1
         # Compute Field_0: first iteration of CBS
-        # Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * source
-        source_scaled = source .* (Complex{T}(0, 1) / solver.eps_imag)
-        _apply_attenuation_masks!(source_scaled, solver.field_attenuation_masks)
-        psi .= source_scaled
+        # Field_0 = (i/ε_imag) * V * (G + G_flip)/2 * source
+        psi .= source
+        _apply_attenuation_masks!(psi, solver.field_attenuation_masks)
 
         # Apply Green's functions: (G + G_flip)/2
         flip_psi .= psi
@@ -600,9 +598,10 @@ function _solve_cbs_scattering(
         psi .+= flip_psi
         psi ./= 2
 
-        # Apply potential: Field_0 = V * (G + G_flip)/2 * (i/ε_imag) * source
+        # Apply potential: Field_0 = (i/ε_imag) * V
         rhs .= solver.potential .* psi
         _apply_attenuation_masks!(rhs, solver.field_attenuation_masks)
+        rhs .*= (Complex{T}(0, 1) / solver.eps_imag)
 
         # Set up LinearSolve.jl problem
         # Flatten arrays for LinearSolve.jl compatibility
