@@ -110,18 +110,85 @@ function ConvergentBornSolver(
 end
 
 """
+    CBSPreconditioner{T, AT} <: Function
+
+Left preconditioner for the Convergent Born Series implementing R = (1i/ε_imag) * potential.
+
+This preconditioner applies the transformation: y = R * x = (1i/ε_imag) * potential .* x
+
+The CBS linear system becomes: (1-G*V*)x = y with left preconditioner R
+where the original system R*(1-G*V*)x = R*y is reformulated.
+
+# Fields
+- `solver::ConvergentBornSolver{T, AT, FT}`: Reference to the CBS solver containing potential
+- `temp_field::FT`: Preallocated temporary field array for efficient operations
+
+# Interface
+Implements LinearSolve.jl preconditioner interface with `ldiv!` methods.
+"""
+struct CBSPreconditioner{T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+    solver::ConvergentBornSolver{T, AT, FT}
+
+    function CBSPreconditioner(solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
+        new{T, AT, FT}(solver)
+    end
+end
+
+"""
+    ldiv!(y, P::CBSPreconditioner, x)
+
+Apply CBS preconditioner: y = R * x = (1i/ε_imag) * potential .* x
+
+This method implements the LinearSolve.jl preconditioner interface.
+"""
+function LinearAlgebra.ldiv!(y, P::CBSPreconditioner{T, AT, FT}, x) where {T, AT, FT}
+    # Reshape flattened input to 4D field array
+    potential = P.solver.potential
+    field_shape = (size(potential)..., 3)
+    x_field = reshape(x, field_shape)
+    y_field = reshape(y, field_shape)
+    
+    # Apply preconditioner: R * x = (1i/ε_imag) * potential .* x
+    y_field .= potential .* x_field
+    y_field .*= (Complex{T}(0, 1) / P.solver.eps_imag)
+
+    return y
+end
+
+"""
+    ldiv!(P::CBSPreconditioner, x)
+
+In-place application of CBS preconditioner: x = R * x = (1i/ε_imag) * potential .* x
+
+This method implements the in-place LinearSolve.jl preconditioner interface.
+"""
+function LinearAlgebra.ldiv!(P::CBSPreconditioner{T, AT, FT}, x) where {T, AT, FT}
+    # Reshape flattened input to 4D field array
+    potential = P.solver.potential
+    field_shape = (size(potential)..., 3)
+    x_field = reshape(x, field_shape)
+    
+    # Apply preconditioner: R * x = (1i/ε_imag) * potential .* x
+    x_field .*= potential
+    x_field .*= (Complex{T}(0, 1) / P.solver.eps_imag)
+    
+    # No need to copy back since we modified x_field which is a view of x
+    return x
+end
+
+"""
     CBSLinearOperator{T, AT, FT} <: Function
 
-Linear operator representing (I - A) for the Convergent Born Series reformulation.
+Linear operator representing (1-G*V*) for the Convergent Born Series reformulation.
 
 The CBS iteration `Field_{n+1} = Field_0 + A * Field_n` can be reformulated as
-a linear system `(I - A) * Field = Field_0` where:
-- A = V * (G + G_flip)/2 * (i/ε_imag) * V  
+a linear system `(1-G*V*) * Field = Field_0` where:
+- G*V* = (G + G_flip)/2 * V  
 - V is the potential (permittivity contrast)
 - G, G_flip are dyadic Green's functions
-- ε_imag is the imaginary regularization parameter
 
-This operator is compatible with LinearSolve.jl for advanced linear algebra backends.
+This operator represents only the core CBS operator without the preconditioner R.
+The preconditioner R = (1i/ε_imag) * potential is applied separately through LinearSolve.jl.
 
 # Fields
 - `solver::ConvergentBornSolver{T, AT, FT}`: Reference to the CBS solver
@@ -146,7 +213,9 @@ end
 
 Apply the linear operator to input field x, storing result in y.
 
-This implements: y = B*x = R*(x - A*x) where A = (G + G_flip)/2 * V and  R = (i/ε_imag) * V
+This implements: y = (1-G*V*)*x where G*V* = (G + G_flip)/2 * V
+
+The preconditioner R = (1i/ε_imag) * potential is applied separately through LinearSolve.jl.
 
 # Arguments
 - `y`: Output vector (flattened field array)  
@@ -160,7 +229,7 @@ function (op::CBSLinearOperator{T, AT, FT})(y, x, p, t; α = 1, β = 0) where {T
     field_shape = size(psi)
     x_field = reshape(x, field_shape)
 
-    # Apply operator A to x: A*x = (1 - V * (G + G_flip)/2)) * (i/ε_imag) * V * x
+    # Apply Green's operator: G*V*x = (G + G_flip)/2 * V * x
 
     # Step 1: V * x (element-wise multiplication with potential)
     psi .= solver.potential .* x_field
@@ -172,15 +241,11 @@ function (op::CBSLinearOperator{T, AT, FT})(y, x, p, t; α = 1, β = 0) where {T
     psi .+= flip_psi
     psi ./= 2
 
-    # Step 3: (x - A*x) = (x - (G + G_flip)/2 * V * x)
+    # Step 3: (1 - G*V*)x = x - G*V*x
     psi .= x_field .- psi
 
-    # Step 4: apply R*
-    psi .*= solver.potential
-    psi .*= (Complex{T}(0, 1) / solver.eps_imag)
-
     # Flatten result back to vector
-    # y = α * B * x + β * y
+    # y = α * (1-G*V*)x + β * y
     y .*= β
     y .+= α .* vec(psi)
 
@@ -584,11 +649,10 @@ function _solve_cbs_scattering(
     flip_Green_fn = solver.flip_Green_function
     psi = zeros(Complex{T}, size_field)
     flip_psi = zeros(Complex{T}, size_field)
-    rhs = zeros(Complex{T}, size_field)
 
     if solver.Bornmax >= 1
-        # Compute Field_0: first iteration of CBS
-        # Field_0 = (i/ε_imag) * V * (G + G_flip)/2 * source
+        # Compute Field_0: first iteration of CBS without R preconditioner
+        # Field_0 = (G + G_flip)/2 * source
         psi .= source
 
         # Apply Green's functions: (G + G_flip)/2
@@ -598,16 +662,16 @@ function _solve_cbs_scattering(
         psi .+= flip_psi
         psi ./= 2
 
-        # Apply potential: Field_0 = (i/ε_imag) * V
-        rhs .= solver.potential .* psi
-        rhs .*= (Complex{T}(0, 1) / solver.eps_imag)
-
         # Set up LinearSolve.jl problem
         # Flatten arrays for LinearSolve.jl compatibility
-        rhs_vec = copy(vec(rhs))
-        x0_vec = copy(vec(rhs))  # Initial guess: use first CBS iteration
-        # Create linear operator (I - A)
+        rhs_vec = copy(vec(psi))
+        x0_vec = copy(vec(psi))  # Initial guess: use first CBS iteration
+
+        # Create linear operator
         linear_op = CBSLinearOperator(solver)
+        
+        # Create CBS preconditioner R = (1i/ε_imag) * potential
+        preconditioner = CBSPreconditioner(solver)
 
         # Create linear problem
         prob = LinearProblem(linear_op, rhs_vec; u0 = x0_vec)
@@ -622,8 +686,8 @@ function _solve_cbs_scattering(
             :maxiters => max(solver.Bornmax * 2, 100)  # More flexible iteration limit
         )
 
-        # Solve linear system with error handling and fallback
-        sol = LinearSolve.solve(prob, algorithm; solver_options...)
+        # Solve linear system
+        sol = LinearSolve.solve(prob, algorithm; Pl = preconditioner, solver_options...)
 
         # Check convergence status
         if !SciMLBase.successful_retcode(sol.retcode)
