@@ -12,8 +12,8 @@ using LinearSolve: SciMLLinearSolveAlgorithm, KrylovJL_GMRES
 
 Immutable configuration for the Convergent Born Iterative Method solver.
 
-This configuration struct replaces the mutable Dict-based approach from the legacy
-implementation with a type-safe, validated parameter structure.
+This configuration struct provides a modern, type-safe, and validated parameter
+structure for electromagnetic simulation configuration.
 
 # Type Parameters
 - `T`: Floating-point precision type (Float32 or Float64)

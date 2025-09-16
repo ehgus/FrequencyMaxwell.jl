@@ -1,2 +1,5 @@
 .vscode
+
 Manifest.toml
+# Julia document build
+docs/build/

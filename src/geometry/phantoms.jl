@@ -2,8 +2,8 @@
 Phantom generation utilities for electromagnetic simulations.
 
 This module provides functions to generate common geometric objects and
-test phantoms for electromagnetic simulations, maintaining compatibility
-with the legacy jl-ConvergentBornSolver API while adding type safety.
+test phantoms for electromagnetic simulations with comprehensive type safety
+and performance optimization.
 """
 
 """

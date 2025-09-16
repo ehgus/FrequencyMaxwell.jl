@@ -24,8 +24,12 @@ makedocs(;
             "Basic Scattering" => "examples/basic_scattering.md",
             "Phantom Gallery" => "examples/phantom_gallery.md"
         ],
-        "API Reference" => "api.md"
-    ]
+        "API Reference" => "api.md",
+        "Appendix" => [
+            "Development History" => "development_history.md"
+        ]
+    ],
+    checkdocs = :none  # Don't check for missing internal docstrings
 )
 
 deploydocs(;

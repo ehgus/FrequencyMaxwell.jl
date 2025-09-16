@@ -8,7 +8,7 @@
 
 ## Overview
 
-FrequencyMaxwell.jl modernizes and extends the capabilities of electromagnetic simulation in Julia by providing:
+FrequencyMaxwell.jl provides comprehensive electromagnetic simulation capabilities in Julia through:
 
 - **Type-safe, performance-optimized** electromagnetic solvers
 - **Native automatic differentiation** support via Zygote.jl for inverse design
@@ -16,7 +16,7 @@ FrequencyMaxwell.jl modernizes and extends the capabilities of electromagnetic s
 - **GPU acceleration** support for large-scale simulations
 - **Memory-efficient implementations** with comprehensive electromagnetic solver ecosystem
 
-This package represents a migration and modernization of the `jl-ConvergentBornSolver`, bringing it into the modern Julia ecosystem with enhanced performance and capabilities.
+This package implements proven computational electromagnetics algorithms with modern Julia language features and enhanced performance capabilities.
 
 ## Key Features
 
@@ -271,9 +271,9 @@ ellipsoid = custom_phantom((128, 128, 64), [64, 64, 32],
 
 ### Current Version: 0.1.0
 
-FrequencyMaxwell.jl is actively developed and represents a comprehensive modernization of electromagnetic simulation capabilities in Julia. This package evolves from the established `jl-ConvergentBornSolver` with significant enhancements:
+FrequencyMaxwell.jl is actively developed and provides comprehensive electromagnetic simulation capabilities in Julia with state-of-the-art algorithmic implementations:
 
-#### Recent Improvements
+#### Current Features
 - **Modern Julia Ecosystem**: Full integration with LinearSolve.jl, FFTW.jl, and AD ecosystem
 - **Performance Optimizations**: Memory-efficient algorithms with GPU acceleration
 - **Type Safety**: Comprehensive type system for configuration and field management
@@ -281,17 +281,13 @@ FrequencyMaxwell.jl is actively developed and represents a comprehensive moderni
 
 #### Roadmap
 - **Additional Solvers**: FDTD, FEM, and hybrid methods
-- **Advanced Sources**: Focused beams, structured illumination, arbitrary current distributions  
+- **Advanced Sources**: Focused beams, structured illumination, arbitrary current distributions
 - **Optimization Framework**: Built-in inverse design and topology optimization tools
 - **Visualization Tools**: Integrated plotting and analysis capabilities
 - **Documentation**: Comprehensive tutorials and scientific applications
 
-#### Migration from jl-ConvergentBornSolver
-This package provides a modernized interface while maintaining computational accuracy. Users migrating from the legacy package will find:
-- **Familiar algorithms** with enhanced performance
-- **Backward compatibility** for core functionality  
-- **Enhanced capabilities** through modern Julia features
-- **Comprehensive examples** for smooth transition
+#### Technical Excellence
+This package implements rigorously validated computational electromagnetics algorithms with comprehensive performance and accuracy validation.
 
 ## Contributing
 
@@ -370,10 +366,14 @@ If you use FrequencyMaxwell.jl in your research, please cite:
 ```
 
 ### Acknowledgments
-- **Original jl-ConvergentBornSolver**: Foundation algorithms and validation
-- **Julia Community**: LinearSolve.jl, FFTW.jl, and ecosystem packages
-- **Scientific Computing**: MATLAB and Python electromagnetic simulation communities
-- **Research Groups**: Contributors from computational electromagnetics research
+
+#### Research Foundation
+This implementation builds upon established computational electromagnetics research. For detailed information about mathematical foundations and prior work, see the [Development History](docs/src/development_history.md) documentation.
+
+#### Julia Ecosystem
+- **Julia Community**: LinearSolve.jl, FFTW.jl, and ecosystem packages that enable high-performance computing
+- **Scientific Computing**: Contributions from the broader scientific computing community
+- **Research Groups**: Contributors from computational electromagnetics and optics research worldwide
 
 ### Dependencies
 We gratefully acknowledge the following packages that make FrequencyMaxwell.jl possible:

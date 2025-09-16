@@ -13,14 +13,14 @@ function main()
     println("FrequencyMaxwell Basic Scattering Example")
     println("=" ^ 45)
 
-    # Configure the electromagnetic solver with CBS parameters matching jl-ConvergentBornSolver
+    # Configure the electromagnetic solver with optimized CBS parameters
     println("Setting up solver configuration...")
     config = ConvergentBornConfig(
         wavelength = 532e-9,      # 532 nm (green laser)
         permittivity_bg = 1.333^2, # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (128, 128, 64),           # 128×128×64 grid
-        boundary_thickness = (0.0, 0.0, 3.0e-6),  # 3 μm padding in Z (like jl-ConvergentBornSolver)
+        boundary_thickness = (0.0, 0.0, 3.0e-6),  # 3 μm padding in Z for boundary absorption
         field_attenuation = (0.0, 0.0, 3.0e-6),   # 3 μm attenuation in Z
         field_attenuation_sharpness = 1.0,
         periodic_boundary = (true, true, false),   # Periodic in XY, absorbing in Z
@@ -64,7 +64,7 @@ function main()
     bead_radius_pixels = 10.0  # 500 nm radius (10 pixels * 50 nm)
     phantom = phantom_bead(
         config.grid_size,
-        [1.46^2],                  # SiO2 bead (n=1.46, similar to jl-ConvergentBornSolver example)
+        [1.46^2],                  # SiO2 bead (n=1.46, realistic optical material)
         bead_radius_pixels        # 500 nm radius
     )
 

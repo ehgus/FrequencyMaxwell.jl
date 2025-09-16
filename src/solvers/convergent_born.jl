@@ -371,7 +371,7 @@ function _initialize_solver!(
     # Pad the potential (replicate boundary values)
     solver.potential = _pad_array(potential_unpadded, solver.boundary_thickness_pixel, :replicate)
 
-    # Calculate eps_imag based on maximum potential value (following jl-ConvergentBornSolver)
+    # Calculate eps_imag based on maximum potential value for numerical stability
     solver.eps_imag = max(T(2^-20), maximum(abs.(solver.potential)) * T(1.01))
 
     # Add imaginary part to potential for convergence
