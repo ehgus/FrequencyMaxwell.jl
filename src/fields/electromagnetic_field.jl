@@ -6,7 +6,7 @@ with associated grid information and physical units.
 """
 
 """
-    ElectromagneticField{T<:AbstractFloat, N, AT<:AbstractArray{Complex{T}, N}}
+    ElectromagneticField{T<:AbstractFloat}
 
 Structured container for electromagnetic field data with grid information.
 
@@ -16,12 +16,10 @@ components and derived quantities.
 
 # Type Parameters
 - `T<:AbstractFloat`: Floating-point precision type
-- `N`: Array dimensionality (typically 4 for 3D fields + 3 components)
-- `AT<:AbstractArray`: Array type (for CPU/GPU flexibility)
 
 # Fields
-- `E::AT`: Electric field array (V/m)
-- `H::AT`: Magnetic field array (A/m)
+- `E::AbstractArray{Complex{T}}`: Electric field array (V/m)
+- `H::AbstractArray{Complex{T}}`: Magnetic field array (A/m)
 - `grid_size::NTuple{3, Int}`: Spatial grid dimensions
 - `resolution::NTuple{3, T}`: Spatial resolution (meters)
 - `wavelength::T`: Wavelength in the medium (meters)
@@ -47,26 +45,26 @@ Ex = fields.E[:, :, :, 1]  # X-component of electric field
 Hy = fields.H[:, :, :, 2]  # Y-component of magnetic field
 ```
 """
-struct ElectromagneticField{T <: AbstractFloat, N, AT <: AbstractArray{Complex{T}, N}}
-    E::AT
-    H::AT
+struct ElectromagneticField{T <: AbstractFloat}
+    E::AbstractArray{Complex{T}}
+    H::AbstractArray{Complex{T}}
     grid_size::NTuple{3, Int}
     resolution::NTuple{3, T}
     wavelength::T
 
-    function ElectromagneticField{T, N, AT}(
-            E::AT,
-            H::AT,
+    function ElectromagneticField{T}(
+            E::AbstractArray{Complex{T}},
+            H::AbstractArray{Complex{T}},
             grid_size::NTuple{3, Int},
             resolution::NTuple{3, T},
             wavelength::T
-    ) where {T <: AbstractFloat, N, AT <: AbstractArray{Complex{T}, N}}
+    ) where {T <: AbstractFloat}
 
         # Validate field array dimensions
         size(E) == size(H) || throw(ArgumentError("E and H arrays must have same size"))
 
         # For 4D arrays (3D space + 3 components), check grid consistency
-        if N == 4
+        if ndims(E) == 4
             size(E)[1:3] == grid_size ||
                 throw(ArgumentError("field array spatial dimensions must match grid_size"))
             size(E)[4] == 3 ||
@@ -79,25 +77,24 @@ struct ElectromagneticField{T <: AbstractFloat, N, AT <: AbstractArray{Complex{T
         all(resolution .> 0) || throw(ArgumentError("resolution must be positive"))
         wavelength > 0 || throw(ArgumentError("wavelength must be positive"))
 
-        return new{T, N, AT}(E, H, grid_size, resolution, wavelength)
+        return new{T}(E, H, grid_size, resolution, wavelength)
     end
 end
 
 # Convenience constructor with automatic type inference
 function ElectromagneticField(
-        E::AbstractArray{Complex{T}, N},
-        H::AbstractArray{Complex{T}, N},
+        E::AbstractArray{Complex{T}},
+        H::AbstractArray{Complex{T}},
         grid_size::NTuple{3, Int},
         resolution::NTuple{3, <:Real},
         wavelength::Real
-) where {T <: AbstractFloat, N}
+) where {T <: AbstractFloat}
 
     # Promote resolution and wavelength to match field precision
     resolution_T = NTuple{3, T}(T.(resolution))
     wavelength_T = T(wavelength)
 
-    AT = typeof(E)
-    return ElectromagneticField{T, N, AT}(E, H, grid_size, resolution_T, wavelength_T)
+    return ElectromagneticField{T}(E, H, grid_size, resolution_T, wavelength_T)
 end
 
 """
@@ -137,14 +134,17 @@ function field_energy(fields::ElectromagneticField{T}) where {T}
 end
 
 """
-    poynting_vector(fields::ElectromagneticField) -> AbstractArray{Complex{T}, 4}
+    poynting_vector(fields::ElectromagneticField) -> AbstractArray{Complex{T}}
 
 Calculate the complex Poynting vector S = E × H*.
 
-Returns an array with the same spatial dimensions as the input fields,
+Returns a 4D array with the same spatial dimensions as the input fields,
 with the last dimension representing the 3 vector components.
 """
-function poynting_vector(fields::ElectromagneticField{T, 4}) where {T}
+function poynting_vector(fields::ElectromagneticField{T}) where {T}
+    # Ensure we have 4D arrays (3D space + 3 components)
+    ndims(fields.E) == 4 ||
+        throw(ArgumentError("poynting_vector requires 4D field arrays (3D space + 3 components)"))
     # Get field components
     Ex, Ey, Ez = fields.E[:, :, :, 1], fields.E[:, :, :, 2], fields.E[:, :, :, 3]
     Hx, Hy, Hz = fields.H[:, :, :, 1], fields.H[:, :, :, 2], fields.H[:, :, :, 3]
@@ -164,7 +164,7 @@ function poynting_vector(fields::ElectromagneticField{T, 4}) where {T}
 end
 
 """
-    field_intensity(fields::ElectromagneticField; component=:total) -> AbstractArray{T, 3}
+    field_intensity(fields::ElectromagneticField; component=:total) -> AbstractArray{T}
 
 Calculate the field intensity |E|² or individual component intensities.
 
@@ -173,9 +173,12 @@ Calculate the field intensity |E|² or individual component intensities.
 - `component::Symbol`: Component to calculate (:total, :x, :y, :z)
 
 # Returns
-- `intensity::AbstractArray{T, 3}`: Field intensity distribution
+- `intensity::AbstractArray{T}`: Field intensity distribution
 """
-function field_intensity(fields::ElectromagneticField{T, 4}; component::Symbol = :total) where {T}
+function field_intensity(fields::ElectromagneticField{T}; component::Symbol = :total) where {T}
+    # Ensure we have 4D arrays (3D space + 3 components)
+    ndims(fields.E) == 4 ||
+        throw(ArgumentError("field_intensity requires 4D field arrays (3D space + 3 components)"))
     if component == :total
         return sum(abs2, fields.E; dims = 4)[:, :, :, 1]
     elseif component == :x
@@ -203,10 +206,13 @@ Extract a 2D plane from the 3D electromagnetic field.
 - `plane_fields::ElectromagneticField`: 2D electromagnetic field on the specified plane
 """
 function extract_plane(
-        fields::ElectromagneticField{T, 4},
+        fields::ElectromagneticField{T},
         plane_axis::Int,
         plane_index::Int
 ) where {T}
+    # Ensure we have 4D arrays (3D space + 3 components)
+    ndims(fields.E) == 4 ||
+        throw(ArgumentError("extract_plane requires 4D field arrays (3D space + 3 components)"))
     1 ≤ plane_axis ≤ 3 || throw(ArgumentError("plane_axis must be 1, 2, or 3"))
     1 ≤ plane_index ≤ fields.grid_size[plane_axis] ||
         throw(ArgumentError("plane_index out of bounds"))
@@ -241,8 +247,8 @@ end
 
 Custom display for electromagnetic field objects.
 """
-function Base.show(io::IO, fields::ElectromagneticField{T, N, AT}) where {T, N, AT}
-    print(io, "ElectromagneticField{$T, $N, $(AT.name)}:")
+function Base.show(io::IO, fields::ElectromagneticField{T}) where {T}
+    print(io, "ElectromagneticField{$T}")
     print(io, "\n  grid_size: $(fields.grid_size)")
     print(io, "\n  resolution: $(fields.resolution)")
     print(io, "\n  domain_size: $(domain_size(fields))")

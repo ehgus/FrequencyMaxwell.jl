@@ -6,7 +6,7 @@ Iterative Method (CBS) with LinearSolve.jl integration and AD compatibility.
 """
 
 """
-    ConvergentBornSolver{T, AT, FT} <: AbstractElectromagneticSolver{T}
+    ConvergentBornSolver{T} <: AbstractElectromagneticSolver{T}
 
 Mutable solver state for the Convergent Born Iterative Method.
 
@@ -15,14 +15,12 @@ following modern Julia best practices for performance and AD compatibility.
 
 # Type Parameters
 - `T<:AbstractFloat`: Floating-point precision type
-- `AT<:AbstractArray`: Array type for 3D potential arrays (for CPU/GPU flexibility)
-- `FT<:AbstractArray`: Array type for 4D electromagnetic field arrays
 
 # Fields
 - `config::ConvergentBornConfig{T}`: Immutable solver configuration
 - `Green_function::Union{Nothing, AbstractArray}`: Cached Green's function
-- `potential::Union{Nothing, AT}`: Current iteration potential (V = δε)
-- `internal_fields::Union{Nothing, AT}`: Cached internal electromagnetic fields
+- `potential::Union{Nothing, AbstractArray}`: Current iteration potential (V = δε)
+- `internal_fields::Union{Nothing, AbstractArray}`: Cached internal electromagnetic fields
 - `iteration_count::Int`: Current iteration number
 - `residual_history::Vector{T}`: Convergence history tracking
 - `solver_state::Any`: LinearSolve.jl solver state for performance
@@ -44,14 +42,13 @@ config = ConvergentBornConfig(
 solver = ConvergentBornSolver(config)
 ```
 """
-mutable struct ConvergentBornSolver{
-    T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray} <:
+mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
                AbstractElectromagneticSolver{T}
     config::ConvergentBornConfig{T}
     Green_function::Union{Nothing, DyadicGreen{T}}
     flip_Green_function::Union{Nothing, DyadicGreen{T}}
-    potential::Union{Nothing, AT}  # V = k²(ε/ε_bg - 1) with padding
-    permittivity::Union{Nothing, AT}  # Original permittivity without padding
+    potential::Union{Nothing, AbstractArray}  # V = k²(ε/ε_bg - 1) with padding
+    permittivity::Union{Nothing, AbstractArray}  # Original permittivity without padding
     boundary_thickness_pixel::NTuple{3, Int}
     field_attenuation_pixel::NTuple{3, Int}
     ROI::NTuple{6, Int}  # Region of interest bounds
@@ -61,10 +58,9 @@ mutable struct ConvergentBornSolver{
     residual_history::Vector{T}
     solver_state::Any  # LinearSolve.jl solver state
 
-    function ConvergentBornSolver{
-            T, AT, FT}(
+    function ConvergentBornSolver{T}(
             config::ConvergentBornConfig{T}
-    ) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+    ) where {T <: AbstractFloat}
         # Calculate boundary thickness in pixels
         boundary_thickness_pixel = round.(Int, config.boundary_thickness ./
                                                (config.resolution .* 2))
@@ -81,7 +77,7 @@ mutable struct ConvergentBornSolver{
                                              config.grid_size[3]
         )
 
-        new{T, AT, FT}(
+        new{T}(
             config,
             nothing,  # Green_function - computed lazily
             nothing,  # flip_Green_function - computed lazily
@@ -99,18 +95,15 @@ mutable struct ConvergentBornSolver{
     end
 end
 
-# Convenience constructor with automatic array type inference
+# Convenience constructor
 function ConvergentBornSolver(
-        config::ConvergentBornConfig{T};
-        array_type::Type{<:AbstractArray} = Array
+        config::ConvergentBornConfig{T}
 ) where {T <: AbstractFloat}
-    AT = array_type{Complex{T}, 3}  # 3D complex arrays for potential
-    FT = array_type{Complex{T}, 4}  # 4D complex arrays for electromagnetic fields
-    return ConvergentBornSolver{T, AT, FT}(config)
+    return ConvergentBornSolver{T}(config)
 end
 
 """
-    CBSPreconditioner{T, AT} <: Function
+    CBSPreconditioner{T} <: Function
 
 Left preconditioner for the Convergent Born Series implementing R = (1i/ε_imag) * potential.
 
@@ -120,17 +113,16 @@ The CBS linear system becomes: (1-G*V*)x = y with left preconditioner R
 where the original system R*(1-G*V*)x = R*y is reformulated.
 
 # Fields
-- `solver::ConvergentBornSolver{T, AT, FT}`: Reference to the CBS solver containing potential
-- `temp_field::FT`: Preallocated temporary field array for efficient operations
+- `solver::ConvergentBornSolver{T}`: Reference to the CBS solver containing potential
 
 # Interface
 Implements LinearSolve.jl preconditioner interface with `ldiv!` methods.
 """
-struct CBSPreconditioner{T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
-    solver::ConvergentBornSolver{T, AT, FT}
+struct CBSPreconditioner{T <: AbstractFloat}
+    solver::ConvergentBornSolver{T}
 
-    function CBSPreconditioner(solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
-        new{T, AT, FT}(solver)
+    function CBSPreconditioner(solver::ConvergentBornSolver{T}) where {T}
+        new{T}(solver)
     end
 end
 
@@ -141,13 +133,13 @@ Apply CBS preconditioner: y = R * x = (1i/ε_imag) * potential .* x
 
 This method implements the LinearSolve.jl preconditioner interface.
 """
-function LinearAlgebra.ldiv!(y, P::CBSPreconditioner{T, AT, FT}, x) where {T, AT, FT}
+function LinearAlgebra.ldiv!(y, P::CBSPreconditioner{T}, x) where {T}
     # Reshape flattened input to 4D field array
     potential = P.solver.potential
     field_shape = (size(potential)..., 3)
     x_field = reshape(x, field_shape)
     y_field = reshape(y, field_shape)
-    
+
     # Apply preconditioner: R * x = (1i/ε_imag) * potential .* x
     y_field .= potential .* x_field
     y_field .*= (Complex{T}(0, 1) / P.solver.eps_imag)
@@ -162,22 +154,22 @@ In-place application of CBS preconditioner: x = R * x = (1i/ε_imag) * potential
 
 This method implements the in-place LinearSolve.jl preconditioner interface.
 """
-function LinearAlgebra.ldiv!(P::CBSPreconditioner{T, AT, FT}, x) where {T, AT, FT}
+function LinearAlgebra.ldiv!(P::CBSPreconditioner{T}, x) where {T}
     # Reshape flattened input to 4D field array
     potential = P.solver.potential
     field_shape = (size(potential)..., 3)
     x_field = reshape(x, field_shape)
-    
+
     # Apply preconditioner: R * x = (1i/ε_imag) * potential .* x
     x_field .*= potential
     x_field .*= (Complex{T}(0, 1) / P.solver.eps_imag)
-    
+
     # No need to copy back since we modified x_field which is a view of x
     return x
 end
 
 """
-    CBSLinearOperator{T, AT, FT} <: Function
+    CBSLinearOperator{T} <: Function
 
 Linear operator representing (1-G*V*) for the Convergent Born Series reformulation.
 
@@ -191,20 +183,20 @@ This operator represents only the core CBS operator without the preconditioner R
 The preconditioner R = (1i/ε_imag) * potential is applied separately through LinearSolve.jl.
 
 # Fields
-- `solver::ConvergentBornSolver{T, AT, FT}`: Reference to the CBS solver
-- `temp_arrays::NTuple{2, FT}`: Preallocated temporary 4D field arrays for efficiency
+- `solver::ConvergentBornSolver{T}`: Reference to the CBS solver
+- `temp_arrays::NTuple{2, AbstractArray}`: Preallocated temporary 4D field arrays for efficiency
 """
-struct CBSLinearOperator{T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
-    solver::ConvergentBornSolver{T, AT, FT}
-    temp_arrays::NTuple{2, FT}  # Preallocated temporary 4D field arrays
+struct CBSLinearOperator{T <: AbstractFloat}
+    solver::ConvergentBornSolver{T}
+    temp_arrays::NTuple{2, AbstractArray}  # Preallocated temporary 4D field arrays
 
-    function CBSLinearOperator(solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
+    function CBSLinearOperator(solver::ConvergentBornSolver{T}) where {T}
         # Preallocate temporary arrays to match field dimensions
         field_size = size(solver.potential)
         temp1 = zeros(Complex{T}, field_size..., 3)
         temp2 = zeros(Complex{T}, field_size..., 3)
 
-        new{T, AT, FT}(solver, (temp1, temp2))
+        new{T}(solver, (temp1, temp2))
     end
 end
 
@@ -221,7 +213,7 @@ The preconditioner R = (1i/ε_imag) * potential is applied separately through Li
 - `y`: Output vector (flattened field array)  
 - `x`: Input vector (flattened field array)
 """
-function (op::CBSLinearOperator{T, AT, FT})(y, x, p, t; α = 1, β = 0) where {T, AT, FT}
+function (op::CBSLinearOperator{T})(y, x, p, t; α = 1, β = 0) where {T}
     solver = op.solver
     psi, flip_psi = op.temp_arrays
 
@@ -259,7 +251,7 @@ end
 # Make the operator compatible with LinearSolve.jl AbstractArray interface
 Base.size(op::CBSLinearOperator) = (length(op.temp_arrays[1]), length(op.temp_arrays[1]))
 Base.size(op::CBSLinearOperator, dim::Integer) = size(op)[dim]
-Base.eltype(::CBSLinearOperator{T, AT, FT}) where {T, AT, FT} = Complex{T}
+Base.eltype(::CBSLinearOperator{T}) where {T} = Complex{T}
 Base.ndims(::CBSLinearOperator) = 2  # Matrix-like operator
 
 """
@@ -304,10 +296,10 @@ E_field, H_field = solve(solver, sources, permittivity)
 ```
 """
 function LinearSolve.solve(
-        solver::ConvergentBornSolver{T, AT, FT},
+        solver::ConvergentBornSolver{T},
         sources::Union{AbstractCurrentSource{T}, Vector{<:AbstractCurrentSource{T}}},
         permittivity::AbstractArray{<:Number, 3}
-) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+) where {T <: AbstractFloat}
 
     # Validate input dimensions
     size(permittivity) == solver.config.grid_size ||
@@ -355,18 +347,18 @@ The potential pre-masking optimization ensures that subsequent field operations
 automatically include boundary attenuation without redundant mask applications.
 """
 function _initialize_solver!(
-        solver::ConvergentBornSolver{T, AT, FT},
+        solver::ConvergentBornSolver{T},
         permittivity::AbstractArray{<:Number, 3}
-) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+) where {T <: AbstractFloat}
 
     # Store original permittivity
-    solver.permittivity = AT(Complex{T}.(permittivity))
+    solver.permittivity = Complex{T}.(permittivity)
 
     # Compute potential V = k²(ε/ε_bg - 1) with proper padding
     k = T(2π) * sqrt(solver.config.permittivity_bg) / solver.config.wavelength
-    potential_unpadded = AT(Complex{T}.(k^2 *
-                                        (permittivity ./ solver.config.permittivity_bg .-
-                                         1)))
+    potential_unpadded = Complex{T}.(k^2 *
+                                     (permittivity ./ solver.config.permittivity_bg .-
+                                      1))
 
     # Pad the potential (replicate boundary values)
     solver.potential = _pad_array(potential_unpadded, solver.boundary_thickness_pixel, :replicate)
@@ -408,7 +400,7 @@ end
 
 Compute the dyadic Green's function for the given configuration.
 """
-function _compute_green_functions(solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
+function _compute_green_functions(solver::ConvergentBornSolver{T}) where {T}
     config = solver.config
 
     # Calculate wave number in background medium
@@ -423,7 +415,8 @@ function _compute_green_functions(solver::ConvergentBornSolver{T, AT, FT}) where
     flip_subpixel_shift = ntuple(i -> config.periodic_boundary[i] ? T(0) : T(-0.25), 3)
 
     # Create dyadic Green's functions
-    array_type = typeof(solver).parameters[2]
+    array_type = typeof(solver.potential) <: Array ? Array :
+                 typeof(solver.potential).name.wrapper
     Green_fn = DyadicGreen(
         array_type, k_square, arr_size, config.resolution, subpixel_shift)
     flip_Green_fn = DyadicGreen(
@@ -438,9 +431,9 @@ end
 Generate incident electromagnetic fields from the current source.
 """
 function _generate_incident_fields_padded(
-        solver::ConvergentBornSolver{T, AT, FT},
+        solver::ConvergentBornSolver{T},
         source::AbstractCurrentSource{T}
-) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+) where {T <: AbstractFloat}
 
     # Generate incident fields on original grid
     grid_size = solver.config.grid_size
@@ -481,9 +474,9 @@ This produces proper electromagnetic interference patterns where sources can int
 constructively (bright fringes) or destructively (dark fringes).
 """
 function _generate_incident_fields_padded(
-        solver::ConvergentBornSolver{T, AT, FT},
+        solver::ConvergentBornSolver{T},
         sources::Vector{<:AbstractCurrentSource{T}}
-) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+) where {T <: AbstractFloat}
 
     # Initialize total field arrays (padded grid size)
     padded_size = size(solver.potential)[1:3]
@@ -559,9 +552,9 @@ The coordinate system is centered at the domain center for proper phase referenc
 function _fill_plane_wave_fields!(
         E_incident::AbstractArray{Complex{T}, 4},
         H_incident::AbstractArray{Complex{T}, 4},
-        solver::ConvergentBornSolver{T, AT, FT},
+        solver::ConvergentBornSolver{T},
         source::PlaneWaveSource{T}
-) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+) where {T <: AbstractFloat}
     config = solver.config
     grid_size = config.grid_size
     resolution = config.resolution
@@ -639,9 +632,9 @@ and leverages the user-configured LinearSolver algorithm for efficient solution.
 - `(E_field, H_field)`: Tuple of electric and magnetic field arrays
 """
 function _solve_cbs_scattering(
-        solver::ConvergentBornSolver{T, AT, FT},
+        solver::ConvergentBornSolver{T},
         source::AbstractArray{Complex{T}, 4}
-) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+) where {T <: AbstractFloat}
 
     # Prepare right-hand side: Field_0 from first CBS iteration  
     size_field = size(source)
@@ -669,7 +662,7 @@ function _solve_cbs_scattering(
 
         # Create linear operator
         linear_op = CBSLinearOperator(solver)
-        
+
         # Create CBS preconditioner R = (1i/ε_imag) * potential
         preconditioner = CBSPreconditioner(solver)
 
@@ -721,12 +714,13 @@ H = -i/k₀ * (n₀/Z₀) * ∇ × E
 where k₀ is the free-space wave number and Z₀ = 377 Ω is the impedance.
 """
 function _compute_magnetic_field(
-        solver::ConvergentBornSolver{T, AT, FT},
+        solver::ConvergentBornSolver{T},
         E_field::AbstractArray{Complex{T}, 4}
-) where {T <: AbstractFloat, AT <: AbstractArray, FT <: AbstractArray}
+) where {T <: AbstractFloat}
 
     # Create curl operator for field with padding
-    curl_op = Curl(AT, T, size(solver.potential), solver.config.resolution)
+    array_type = typeof(solver.potential)
+    curl_op = Curl(array_type, T, size(solver.potential), solver.config.resolution)
 
     # Compute curl of E field
     Hfield = conv(curl_op, E_field)
@@ -829,8 +823,7 @@ This optimized function combines mask creation and application into a single ope
 eliminating the need to store intermediate mask arrays. The masks are created
 dimension-by-dimension and immediately applied to prevent boundary reflections.
 """
-function _apply_attenuation_to_potential!(solver::ConvergentBornSolver{
-        T, AT, FT}) where {T, AT, FT}
+function _apply_attenuation_to_potential!(solver::ConvergentBornSolver{T}) where {T}
     for dim in 1:3
         max_L = solver.boundary_thickness_pixel[dim]
         L = min(max_L, solver.field_attenuation_pixel[dim])
@@ -908,8 +901,8 @@ end
 
 Custom display for solver objects with status information.
 """
-function Base.show(io::IO, solver::ConvergentBornSolver{T, AT, FT}) where {T, AT, FT}
-    print(io, "ConvergentBornSolver{$T, $(AT.name)}:")
+function Base.show(io::IO, solver::ConvergentBornSolver{T}) where {T}
+    print(io, "ConvergentBornSolver{$T}:")
     print(io, "\n  iterations: $(solver.iteration_count)")
     if !isempty(solver.residual_history)
         print(io, "\n  last residual: $(last(solver.residual_history))")
