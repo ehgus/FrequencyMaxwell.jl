@@ -18,6 +18,7 @@ following modern Julia best practices for performance and AD compatibility.
 
 # Fields
 - `config::ConvergentBornConfig{T}`: Immutable solver configuration
+- `backend::Backend`: Cached KernelAbstractions.jl backend for device operations
 - `Green_function::Union{Nothing, AbstractArray}`: Cached Green's function
 - `potential::Union{Nothing, AbstractArray}`: Current iteration potential (V = δε)
 - `internal_fields::Union{Nothing, AbstractArray}`: Cached internal electromagnetic fields
@@ -27,7 +28,11 @@ following modern Julia best practices for performance and AD compatibility.
 
 # Constructor
 ```julia
-ConvergentBornSolver(config::ConvergentBornConfig{T}; array_type=Array) where T
+# Symbol-based device selection
+ConvergentBornSolver(config::ConvergentBornConfig{T}, device::Symbol=:cpu) where T
+
+# Direct backend input for advanced users
+ConvergentBornSolver(config::ConvergentBornConfig{T}, backend::KernelAbstractions.Backend) where T
 ```
 
 # Example
@@ -39,15 +44,25 @@ config = ConvergentBornConfig(
     grid_size = (128, 128, 32)
 )
 
-solver = ConvergentBornSolver(config)
+# Symbol-based device selection
+solver = ConvergentBornSolver(config, :cuda)  # GPU acceleration
+solver = ConvergentBornSolver(config, :cpu)   # CPU execution
+solver = ConvergentBornSolver(config)         # Default CPU
+
+# Direct backend for advanced users
+using KernelAbstractions
+backend = CUDABackend()
+solver = ConvergentBornSolver(config, backend)
 ```
 """
 mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
                AbstractElectromagneticSolver{T}
     config::ConvergentBornConfig{T}
+    backend::Backend  # Cached KernelAbstractions.jl backend
     Green_function::Union{Nothing, DyadicGreen{T}}
     flip_Green_function::Union{Nothing, DyadicGreen{T}}
     potential::Union{Nothing, AbstractArray}  # V = k²(ε/ε_bg - 1) with padding
+    potential_device::Union{Nothing, AbstractArray}  # Device-resident potential
     permittivity::Union{Nothing, AbstractArray}  # Original permittivity without padding
     boundary_thickness_pixel::NTuple{3, Int}
     field_attenuation_pixel::NTuple{3, Int}
@@ -59,7 +74,8 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     solver_state::Any  # LinearSolve.jl solver state
 
     function ConvergentBornSolver{T}(
-            config::ConvergentBornConfig{T}
+            config::ConvergentBornConfig{T},
+            backend::Backend
     ) where {T <: AbstractFloat}
         # Calculate boundary thickness in pixels
         boundary_thickness_pixel = round.(Int, config.boundary_thickness ./
@@ -79,9 +95,11 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
 
         new{T}(
             config,
+            backend,  # KernelAbstractions.jl backend (cached)
             nothing,  # Green_function - computed lazily
             nothing,  # flip_Green_function - computed lazily
             nothing,  # potential - set during solve
+            nothing,  # potential_device - set during solve
             nothing,  # permittivity - set during solve
             boundary_thickness_pixel,
             field_attenuation_pixel,
@@ -95,11 +113,115 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     end
 end
 
-# Convenience constructor
+"""
+    to_device(backend::KernelAbstractions.Backend, host_array::AbstractArray) -> AbstractArray
+
+Transfer a host array to the device specified by the backend.
+
+This function handles data transfer from host memory to device memory,
+automatically handling the appropriate array type conversion.
+
+# Arguments
+- `backend::KernelAbstractions.Backend`: Target device backend
+- `host_array::AbstractArray`: Source array (typically on host/CPU)
+
+# Returns
+- Device-resident copy of the input array
+"""
+function to_device(backend::KernelAbstractions.Backend, host_array::AbstractArray)
+    device_array = KernelAbstractions.allocate(backend, eltype(host_array), size(host_array))
+    copyto!(device_array, host_array)
+    return device_array
+end
+
+"""
+    to_host(device_array::AbstractArray) -> Array
+
+Transfer a device array back to host memory as a standard Julia Array.
+
+This function handles data transfer from device memory back to host memory,
+ensuring results are accessible as normal Julia arrays.
+
+# Arguments
+- `device_array::AbstractArray`: Source array on device
+
+# Returns
+- Host-resident Array copy of the device array
+"""
+function to_host(device_array::AbstractArray)
+    host_array = Array{eltype(device_array)}(undef, size(device_array))
+    copyto!(host_array, device_array)
+    return host_array
+end
+
+"""
+    create_backend_from_symbol(device::Symbol) -> KernelAbstractions.Backend
+
+Create a KernelAbstractions.jl backend from a device symbol with conditional GPU support.
+
+This function provides the symbol-to-backend mapping that enables simple
+device selection while maintaining pure KernelAbstractions.jl implementation.
+
+# Supported Device Symbols
+- `:cpu` → `CPU()` - Multi-threaded CPU execution
+- `:cuda` → `CUDABackend()` - NVIDIA GPUs via CUDA
+- `:amdgpu` → `ROCBackend()` - AMD GPUs via ROCm
+- `:metal` → `MetalBackend()` - Apple Silicon via Metal
+- `:oneapi` → `oneAPIBackend()` - Intel GPUs via oneAPI
+
+# Example
+```julia
+# Always works
+backend = create_backend_from_symbol(:cpu)
+
+# Works if CUDA.jl is loaded
+backend = create_backend_from_symbol(:cuda)
+
+# Check availability first
+if is_backend_available(:cuda)
+    backend = create_backend_from_symbol(:cuda)
+else
+    @info "CUDA.jl not available, using CPU backend"
+    backend = create_backend_from_symbol(:cpu)
+end
+```
+"""
+function create_backend_from_symbol(device::Symbol)
+    if device == :cpu
+        return KernelAbstractions.CPU()
+    elseif is_backend_available(device)
+        # Use registered GPU backend constructor
+        constructor = FrequencyMaxwell.GPU_BACKENDS[device]
+        return constructor()
+    else
+        # Provide specific installation guidance
+        install_instructions = if device == :cuda
+            "Install CUDA.jl with: Pkg.add(\"CUDA\")"
+        elseif device in [:amdgpu, :rocm]
+            "Install AMDGPU.jl with: Pkg.add(\"AMDGPU\")"
+        elseif device == :metal
+            "Install Metal.jl with: Pkg.add(\"Metal\")"
+        elseif device == :oneapi
+            "Install oneAPI.jl with: Pkg.add(\"oneAPI\")"
+        else
+            "Unknown device symbol: :$device"
+        end
+
+        throw(ArgumentError(
+            "GPU backend :$device is not available. $install_instructions\n" *
+            "For CPU-only usage, use: ConvergentBornSolver(config, :cpu)"
+        ))
+    end
+end
+
+# Dynamic dispatch constructor: Symbol-based device selection
 function ConvergentBornSolver(
-        config::ConvergentBornConfig{T}
+        config::ConvergentBornConfig{T},
+        device::Symbol = :cpu;
 ) where {T <: AbstractFloat}
-    return ConvergentBornSolver{T}(config)
+    # Create backend from symbol (called only once during construction)
+    backend = create_backend_from_symbol(device)
+    return ConvergentBornSolver{T}(config, backend)
 end
 
 """
@@ -135,7 +257,7 @@ This method implements the LinearSolve.jl preconditioner interface.
 """
 function LinearAlgebra.ldiv!(y, P::CBSPreconditioner{T}, x) where {T}
     # Reshape flattened input to 4D field array
-    potential = P.solver.potential
+    potential = P.solver.potential_device
     field_shape = (size(potential)..., 3)
     x_field = reshape(x, field_shape)
     y_field = reshape(y, field_shape)
@@ -156,7 +278,7 @@ This method implements the in-place LinearSolve.jl preconditioner interface.
 """
 function LinearAlgebra.ldiv!(P::CBSPreconditioner{T}, x) where {T}
     # Reshape flattened input to 4D field array
-    potential = P.solver.potential
+    potential = P.solver.potential_device
     field_shape = (size(potential)..., 3)
     x_field = reshape(x, field_shape)
 
@@ -175,7 +297,7 @@ Linear operator representing (1-G*V*) for the Convergent Born Series reformulati
 
 The CBS iteration `Field_{n+1} = Field_0 + A * Field_n` can be reformulated as
 a linear system `(1-G*V*) * Field = Field_0` where:
-- G*V* = (G + G_flip)/2 * V  
+- G*V* = (G + G_flip)/2 * V
 - V is the potential (permittivity contrast)
 - G, G_flip are dyadic Green's functions
 
@@ -193,8 +315,8 @@ struct CBSLinearOperator{T <: AbstractFloat}
     function CBSLinearOperator(solver::ConvergentBornSolver{T}) where {T}
         # Preallocate temporary arrays to match field dimensions
         field_size = size(solver.potential)
-        temp1 = zeros(Complex{T}, field_size..., 3)
-        temp2 = zeros(Complex{T}, field_size..., 3)
+        temp1 = KernelAbstractions.zeros(solver.backend, Complex{T}, field_size..., 3)
+        temp2 = KernelAbstractions.zeros(solver.backend, Complex{T}, field_size..., 3)
 
         new{T}(solver, (temp1, temp2))
     end
@@ -215,6 +337,7 @@ The preconditioner R = (1i/ε_imag) * potential is applied separately through Li
 """
 function (op::CBSLinearOperator{T})(y, x, p, t; α = 1, β = 0) where {T}
     solver = op.solver
+    potential = solver.potential_device
     psi, flip_psi = op.temp_arrays
 
     # Reshape flattened input to 4D field array
@@ -224,7 +347,7 @@ function (op::CBSLinearOperator{T})(y, x, p, t; α = 1, β = 0) where {T}
     # Apply Green's operator: G*V*x = (G + G_flip)/2 * V * x
 
     # Step 1: V * x (element-wise multiplication with potential)
-    psi .= solver.potential .* x_field
+    psi .= potential .* x_field
 
     # Step 2: (G + G_flip)/2
     flip_psi .= psi
@@ -321,8 +444,15 @@ function LinearSolve.solve(
     source_term = solver.potential .* E_incident .+
                   Complex{T}(0, solver.eps_imag) .* E_incident
 
+    # Transfer source term to device
+    source_term = to_device(solver.backend, source_term)
+
     # Solve scattering equation using CBS algorithm
-    E_scattered, H_scattered = _solve_cbs_scattering(solver, source_term)
+    E_scattered_device, H_scattered_device = _solve_cbs_scattering(solver, source_term)
+
+    # Transfer scattered field back to host
+    E_scattered = to_host(E_scattered_device)
+    H_scattered = to_host(H_scattered_device)
 
     # Add incident field to get total field and crop to ROI
     E_total = crop_to_ROI(E_scattered + E_incident, solver)
@@ -391,6 +521,9 @@ function _initialize_solver!(
     # Reset iteration tracking
     solver.iteration_count = 0
     empty!(solver.residual_history)
+
+    # Transfer potential to device
+    solver.potential_device = to_device(solver.backend, solver.potential)
 
     return nothing
 end
@@ -640,8 +773,8 @@ function _solve_cbs_scattering(
     size_field = size(source)
     Green_fn = solver.Green_function
     flip_Green_fn = solver.flip_Green_function
-    psi = zeros(Complex{T}, size_field)
-    flip_psi = zeros(Complex{T}, size_field)
+    psi = KernelAbstractions.zeros(solver.backend, Complex{T}, size_field)
+    flip_psi = KernelAbstractions.zeros(solver.backend, Complex{T}, size_field)
 
     if solver.Bornmax >= 1
         # Compute Field_0: first iteration of CBS without R preconditioner
@@ -903,6 +1036,7 @@ Custom display for solver objects with status information.
 """
 function Base.show(io::IO, solver::ConvergentBornSolver{T}) where {T}
     print(io, "ConvergentBornSolver{$T}:")
+    print(io, "\n  device: $(typeof(solver.backend))")
     print(io, "\n  iterations: $(solver.iteration_count)")
     if !isempty(solver.residual_history)
         print(io, "\n  last residual: $(last(solver.residual_history))")

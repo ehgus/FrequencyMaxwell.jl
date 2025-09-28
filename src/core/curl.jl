@@ -61,8 +61,8 @@ where k is the wave vector and Ê is the Fourier transform of E.
 """
 function conv(curl::Curl, field::AbstractArray)
     # Initialize result array
-    result = similar(field)
-    fill!(result, zero(eltype(result)))
+    backend = get_backend(field)
+    result = KernelAbstractions.zeros(backend, eltype(field), size(field))
 
     fourier_resolution = curl.freq_res
 
@@ -86,7 +86,7 @@ function conv(curl::Curl, field::AbstractArray)
         coor_axis_shaped = reshape(coor_axis, Tuple(dims))
 
         # Convert to complex and multiply by i for derivative  
-        coord_complex = Complex{curl.precision}(1im) * coor_axis_shaped
+        coord_complex = to_device(backend, Complex{curl.precision}(1im) * coor_axis_shaped)
         push!(fourier_coord, coord_complex)
     end
 

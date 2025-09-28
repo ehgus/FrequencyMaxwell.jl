@@ -54,6 +54,7 @@ using StaticArrays
 using KernelAbstractions
 using SciMLBase
 using Reexport
+using Requires
 
 # Reexport LinearSolve symbols to avoid name clashes
 @reexport using LinearSolve: solve
@@ -94,7 +95,10 @@ export
       source_wavelength,
       source_power,
       validate_source,
-      generate_incident_fields
+      generate_incident_fields,
+
+# GPU Backend utilities
+      is_backend_available
 
 # Include submodules in correct order (dependencies first)
 include("core/types.jl")
@@ -106,5 +110,52 @@ include("sources/plane_wave.jl")
 include("fields/electromagnetic_field.jl")
 include("geometry/phantoms.jl")
 include("solvers/convergent_born.jl")
+
+# GPU Backend Registry for conditional loading
+const GPU_BACKENDS = Dict{Symbol, Function}()
+
+"""
+    register_gpu_backend!(device::Symbol, constructor::Function)
+
+Register a GPU backend constructor function for conditional loading.
+
+This function allows GPU packages to register their backend constructors
+when they are loaded via Requires.jl @require macros.
+"""
+function register_gpu_backend!(device::Symbol, constructor::Function)
+    GPU_BACKENDS[device] = constructor
+    return nothing
+end
+
+"""
+    is_backend_available(device::Symbol) -> Bool
+
+Check if a GPU backend is available for the specified device.
+
+Returns true if the corresponding GPU package has been loaded and
+registered its backend constructor.
+"""
+function is_backend_available(device::Symbol)
+    return haskey(GPU_BACKENDS, device)
+end
+
+# Conditional GPU backend loading
+function __init__()
+    @require CUDA="052768ef-5323-5732-b1bb-66c8b64840ba" begin
+        register_gpu_backend!(:cuda, () -> CUDA.CUDABackend())
+    end
+
+    @require AMDGPU="21141c5a-9bdb-4563-92ae-f87d6854732e" begin
+        register_gpu_backend!(:amdgpu, () -> AMDGPU.ROCBackend())
+    end
+
+    @require Metal="dde4c033-4e86-420c-a63e-0dd931031962" begin
+        register_gpu_backend!(:metal, () -> Metal.MetalBackend())
+    end
+
+    @require oneAPI="8f75cd03-7ff8-4ecb-9b8f-daf728133b1b" begin
+        register_gpu_backend!(:oneapi, () -> oneAPI.oneAPIBackend())
+    end
+end
 
 end # module FrequencyMaxwell
