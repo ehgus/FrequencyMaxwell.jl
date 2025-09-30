@@ -18,8 +18,8 @@ incident electromagnetic fields satisfying Maxwell's equations.
 
 # Fields
 - `wavelength::T`: Wavelength in the background medium (meters)
-- `polarization::ComplexVec3{T}`: Complex polarization vector (V/m)
-- `k_vector::RealVec3{T}`: Wave vector direction (normalized)
+- `polarization::SVector{3, Complex{T}}`: Complex polarization vector (V/m)
+- `k_vector::SVector{3, T}`: Wave vector direction (normalized)
 - `amplitude::T`: Field amplitude (V/m)
 - `phase::T`: Initial phase offset (radians)
 
@@ -62,15 +62,15 @@ source_circular = PlaneWaveSource(
 """
 struct PlaneWaveSource{T <: AbstractFloat} <: AbstractCurrentSource{T}
     wavelength::T
-    polarization::ComplexVec3{T}
-    k_vector::RealVec3{T}
+    polarization::SVector{3, Complex{T}}
+    k_vector::SVector{3, T}
     amplitude::T
     phase::T
 
     function PlaneWaveSource{T}(
             wavelength::T,
-            polarization::ComplexVec3{T},
-            k_vector::RealVec3{T},
+            polarization::SVector{3, Complex{T}},
+            k_vector::SVector{3, T},
             amplitude::T,
             phase::T
     ) where {T <: AbstractFloat}
@@ -107,8 +107,8 @@ function PlaneWaveSource(;
     T <: AbstractFloat || (T = Float64)
 
     # Convert to static vectors with proper types
-    pol_static = ComplexVec3{T}(Complex{T}.(polarization))
-    k_static = RealVec3{T}(T.(k_vector))
+    pol_static = SVector{3, Complex{T}}(Complex{T}.(polarization))
+    k_static = SVector{3, T}(T.(k_vector))
 
     return PlaneWaveSource{T}(
         T(wavelength), pol_static, k_static, T(amplitude), T(phase)

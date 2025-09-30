@@ -21,19 +21,3 @@ The type parameter `T` specifies the floating-point precision used for calculati
 """
 abstract type AbstractCurrentSource{T <: AbstractFloat} end
 
-"""
-    AbstractMaxwellConfig{T<:AbstractFloat}
-
-Abstract supertype for solver configuration objects.
-The type parameter `T` specifies the floating-point precision used for calculations.
-"""
-abstract type AbstractMaxwellConfig{T <: AbstractFloat} end
-
-"""
-Type aliases for common array types to ensure consistency across the package.
-"""
-const RealVec3{T} = SVector{3, T} where {T <: Real}
-const ComplexVec3{T} = SVector{3, Complex{T}} where {T <: Real}
-const RealArray3D{T} = AbstractArray{T, 3} where {T <: Real}
-const ComplexArray3D{T} = AbstractArray{Complex{T}, 3} where {T <: Real}
-const ComplexArray4D{T} = AbstractArray{Complex{T}, 4} where {T <: Real}

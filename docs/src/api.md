@@ -101,17 +101,6 @@ These types are primarily for internal use but may be useful for advanced users 
 The following abstract types form the foundation of the type hierarchy:
 
 - `AbstractElectromagneticSolver{T<:AbstractFloat}`: Base type for all electromagnetic solvers
-- `AbstractMaxwellConfig{T<:AbstractFloat}`: Base type for all configuration objects
-
-### Type Aliases
-
-The package defines several type aliases for consistency:
-
-- `RealVec3{T}`: 3D real vector using StaticArrays
-- `ComplexVec3{T}`: 3D complex vector using StaticArrays
-- `RealArray3D{T}`: 3D real array (hardware-agnostic)
-- `ComplexArray3D{T}`: 3D complex array (hardware-agnostic)
-- `ComplexArray4D{T}`: 4D complex array (hardware-agnostic)
 
 ### Green's Function Implementation
 
