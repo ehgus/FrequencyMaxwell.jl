@@ -13,7 +13,7 @@ FrequencyMaxwell.jl provides comprehensive electromagnetic simulation capabiliti
 - **Type-safe, performance-optimized** electromagnetic solvers
 - **Native automatic differentiation** support via Zygote.jl for inverse design
 - **Flexible linear algebra backends** through LinearSolve.jl integration
-- **GPU acceleration** support for large-scale simulations
+- **Vendor-agnostic GPU acceleration** via KernelAbstractions.jl (NVIDIA, AMD, Apple, Intel)
 - **Memory-efficient implementations** with comprehensive electromagnetic solver ecosystem
 
 This package implements proven computational electromagnetics algorithms with modern Julia language features and enhanced performance capabilities.
@@ -30,7 +30,7 @@ This package implements proven computational electromagnetics algorithms with mo
 - **LinearSolve.jl** integration for optimized linear algebra operations
 - **Automatic differentiation** compatibility for gradient-based optimization
 - **Type-stable, memory-efficient** implementations
-- **GPU acceleration** support through CUDA.jl ecosystem
+- **GPU acceleration** via KernelAbstractions.jl (CUDA, ROCm, Metal, oneAPI)
 - **Thread-safe parallel** computing capabilities
 
 ### Scientific Applications
@@ -66,7 +66,10 @@ Pkg.add(url="https://github.com/your-org/FrequencyMaxwell.jl")
 - **StaticArrays.jl** for efficient small array operations
 
 Optional dependencies for extended functionality:
-- **CUDA.jl** for GPU acceleration
+- **CUDA.jl** for NVIDIA GPU acceleration
+- **AMDGPU.jl** for AMD GPU acceleration
+- **Metal.jl** for Apple Silicon GPU acceleration
+- **oneAPI.jl** for Intel GPU acceleration
 - **Zygote.jl** for automatic differentiation
 - **ChainRulesCore.jl** for custom differentiation rules
 
@@ -111,6 +114,33 @@ fields = ElectromagneticField(E_field, H_field, solver.grid_size,
 
 println("Total field energy: $(field_energy(fields)) J")
 println("Maximum intensity: $(maximum(field_intensity(fields)))")
+```
+
+### GPU-Accelerated Simulation
+
+```julia
+using FrequencyMaxwell
+
+# Enable GPU acceleration (requires CUDA.jl for NVIDIA GPUs)
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (256, 256, 128),  # Larger problem for GPU
+    device = :cuda                 # Use NVIDIA GPU
+)
+
+# Same API as CPU - device handling is automatic
+source = PlaneWaveSource(
+    wavelength = solver.wavelength,
+    polarization = [1.0, 0.0, 0.0],
+    k_vector = [0.0, 0.0, 1.0]
+)
+
+phantom = phantom_bead(solver.grid_size, [1.5^2], 32.0)
+E_field, H_field = solve(solver, source, phantom)
+
+# Results are automatically transferred back to host
 ```
 
 ### Advanced Usage with Automatic Differentiation
@@ -183,7 +213,7 @@ cylinder = phantom_cylinder(grid_size, permittivity, radius, axis=3)
 - **SIMD Optimized**: Vectorized operations using Julia's native SIMD
 
 ### Scalability
-- **GPU Acceleration**: Native support for CUDA.jl backends
+- **GPU Acceleration**: Vendor-agnostic support via KernelAbstractions.jl (NVIDIA, AMD, Apple, Intel)
 - **Parallel Computing**: Thread-safe implementations for multi-core systems
 - **Large-Scale Problems**: Efficient handling of problems with millions of unknowns
 - **Adaptive Algorithms**: Convergence-based iteration control

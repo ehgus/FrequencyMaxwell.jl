@@ -91,8 +91,28 @@ FrequencyMaxwell.jl uses an immutable configuration approach where all simulatio
 The package is designed to work across different hardware:
 
 - **CPU**: Standard Julia arrays for development and small problems
+- **GPU**: Vendor-agnostic GPU acceleration (NVIDIA CUDA, AMD ROCm, Apple Metal, Intel oneAPI)
 - **Memory Management**: Efficient memory usage for large-scale simulations
 - **Precision**: Supports both Float32 and Float64 precision
+
+### GPU Acceleration
+
+Enable GPU acceleration by specifying the `device` parameter:
+
+```julia
+# Using NVIDIA GPU (requires CUDA.jl)
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (128, 128, 32),
+    device = :cuda
+)
+
+# Other supported devices: :amdgpu (ROCm), :metal (Apple), :oneapi (Intel)
+```
+
+The package will automatically check for GPU availability and provide installation instructions if needed. Use `:cpu` for CPU-only computation.
 
 ### LinearSolve.jl Integration
 

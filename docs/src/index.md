@@ -35,6 +35,6 @@ phantom = phantom_bead(solver.grid_size, [1.5^2], 16.0)
 E_field, H_field = solve(solver, source, phantom)
 ```
 
-## Future Implementation
+## GPU Acceleration
 
-FrequencyMaxwell.jl is actively developed with planned enhancements including GPU acceleration support and automatic differentiation capabilities for optimization workflows. These features are designed to maintain vendor-agnostic hardware support and seamless integration with the Julia ecosystem.
+FrequencyMaxwell.jl supports vendor-agnostic GPU acceleration via KernelAbstractions.jl, enabling simulation on NVIDIA (CUDA), AMD (ROCm), Apple Silicon (Metal), and Intel (oneAPI) GPUs with the same unified interface.

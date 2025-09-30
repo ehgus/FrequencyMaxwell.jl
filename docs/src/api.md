@@ -26,6 +26,16 @@ grid_spacing
 wavenumber_background
 ```
 
+### GPU Backend Utilities
+
+Functions for GPU device management (available when GPU packages are loaded).
+
+```@docs
+is_backend_available
+create_backend_from_symbol
+to_device
+```
+
 ### Core Solving Function
 
 ```@docs

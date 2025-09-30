@@ -75,6 +75,14 @@ solver = ConvergentBornSolver(
 - **Options**: Any LinearSolve.jl algorithm (KrylovJL_GMRES, BiCGStabL, etc.)
 - **Example**: `KrylovJL_GMRES()` for recommended default choice
 
+#### Hardware Configuration
+
+**`device`** (optional, default: `:cpu`)
+- **Type**: `Symbol`
+- **Description**: Device backend for computation
+- **Options**: `:cpu` (multi-threaded), `:cuda` (NVIDIA), `:amdgpu` (AMD), `:metal` (Apple), `:oneapi` (Intel)
+- **Validation**: Requires corresponding GPU package to be loaded (CUDA.jl, AMDGPU.jl, Metal.jl, or oneAPI.jl)
+- **Example**: `device = :cuda` for NVIDIA GPU acceleration
 
 #### Boundary Configuration
 
@@ -137,6 +145,25 @@ println(typeof(config))  # ConvergentBornConfig{Float64}
 ```
 
 ## Advanced Configuration
+
+### GPU-Accelerated Simulations
+
+For large-scale problems, GPU acceleration provides significant speedup:
+
+```julia
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (256, 256, 128),
+    device = :cuda,              # Use NVIDIA GPU
+    tolerance = 1e-6
+)
+
+# For AMD GPUs: device = :amdgpu
+# For Apple Silicon: device = :metal
+# For Intel GPUs: device = :oneapi
+```
 
 ### High-Resolution Simulations
 
