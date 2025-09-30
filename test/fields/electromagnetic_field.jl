@@ -111,8 +111,8 @@ Tests electromagnetic source generation and field initialization.
             # Test that non-normal incidence creates expected spatial patterns
             if k_normalized != [0.0, 0.0, 1.0]
                 # Should have spatial variation due to oblique incidence
-                center_field = E_field[div(end,2), div(end,2), div(end,2), 1]
-                edge_field = E_field[1, 1, div(end,2), 1]
+                center_field = E_field[div(end, 2), div(end, 2), div(end, 2), 1]
+                edge_field = E_field[1, 1, div(end, 2), 1]
                 @test abs(center_field - edge_field) > 0.0  # Should have spatial variation
             end
         end
@@ -193,5 +193,64 @@ Tests electromagnetic source generation and field initialization.
         # Test that manual superposition is linear (already computed above)
         @test E_total ≈ E1 + E2
         @test H_total ≈ H1 + H2
+    end
+end
+
+@testset "ElectromagneticField Structure" begin
+    @testset "Field Construction" begin
+        # Test basic field construction with correct constructor
+        E_data = rand(ComplexF64, 32, 32, 16, 3)  # Grid + 3 components
+        H_data = rand(ComplexF64, 32, 32, 16, 3)  # Grid + 3 components
+        grid_size = (32, 32, 16)
+        resolution = (100e-9, 100e-9, 200e-9)
+        wavelength = 500e-9
+
+        fields = ElectromagneticField(E_data, H_data, grid_size, resolution, wavelength)
+
+        @test size(fields.E) == (32, 32, 16, 3)
+        @test size(fields.H) == (32, 32, 16, 3)
+        @test fields.grid_size == grid_size
+        @test fields.resolution == resolution
+        @test fields.wavelength ≈ wavelength
+    end
+
+    @testset "Field Utilities" begin
+        # Create test fields with correct constructor
+        E_data = ones(ComplexF64, 16, 16, 8, 3) * 0.1
+        H_data = ones(ComplexF64, 16, 16, 8, 3) * 0.01
+        grid_size = (16, 16, 8)
+        resolution = (50e-9, 50e-9, 100e-9)
+        wavelength = 633e-9
+
+        fields = ElectromagneticField(E_data, H_data, grid_size, resolution, wavelength)
+
+        # Test energy calculation
+        energy = field_energy(fields)
+        @test energy > 0
+        @test isfinite(energy)
+
+        # Test intensity calculation
+        intensity = field_intensity(fields)
+        @test size(intensity) == (16, 16, 8)
+        @test all(intensity .≥ 0)
+
+        # Test Poynting vector
+        S = poynting_vector(fields)
+        @test size(S) == (16, 16, 8, 3)
+    end
+
+    @testset "Field Domain Properties" begin
+        E_data = rand(ComplexF64, 20, 30, 10, 3)
+        H_data = rand(ComplexF64, 20, 30, 10, 3)
+        grid_size = (20, 30, 10)
+        resolution = (25e-9, 40e-9, 80e-9)
+        wavelength = 500e-9
+
+        fields = ElectromagneticField(E_data, H_data, grid_size, resolution, wavelength)
+
+        domain = domain_size(fields)
+        @test domain[1] ≈ 20 * 25e-9
+        @test domain[2] ≈ 30 * 40e-9
+        @test domain[3] ≈ 10 * 80e-9
     end
 end

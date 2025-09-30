@@ -123,4 +123,30 @@ Tests fundamental solver initialization, configuration, and basic operations.
         @test solver.permittivity_bg ≈ 1.0
         @test solver.wavelength ≈ 633e-9
     end
+
+    @testset "Domain Size Calculations" begin
+        solver = ConvergentBornSolver(
+            wavelength = 633e-9,
+            permittivity_bg = 1.0,
+            resolution = (100e-9, 100e-9, 200e-9),
+            grid_size = (50, 60, 25)
+        )
+
+        # Test domain size calculation
+        domain = domain_size(solver)
+        @test domain[1] ≈ 50 * 100e-9
+        @test domain[2] ≈ 60 * 100e-9
+        @test domain[3] ≈ 25 * 200e-9
+
+        # Test utility functions if they exist
+        if isdefined(FrequencyMaxwell, :grid_spacing)
+            spacing = grid_spacing(solver)
+            @test spacing == solver.resolution
+        end
+
+        if isdefined(FrequencyMaxwell, :wavenumber_background)
+            k_bg = wavenumber_background(solver)
+            @test k_bg ≈ 2π * sqrt(solver.permittivity_bg) / solver.wavelength
+        end
+    end
 end

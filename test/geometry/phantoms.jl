@@ -106,4 +106,38 @@ Tests geometric phantom creation and material property assignment.
         @test count(x -> abs(x - 2.0) < 1e-10, phantom_large) >
               count(x -> abs(x - 1.0) < 1e-10, phantom_large)
     end
+
+    @testset "Basic API Tests" begin
+        @testset "Phantom Bead API" begin
+            # Test the phantom_bead function from the existing API
+            grid_size = (32, 32, 32)
+            permittivity_profile = [1.46^2]  # SiO2 (single value for single bead)
+            radius_pixels = 5
+
+            phantom = phantom_bead(grid_size, permittivity_profile, radius_pixels)
+
+            @test size(phantom) == grid_size
+            @test phantom[1, 1, 1] ≈ 1.0  # Background (default is 1.0)
+
+            # Test that center has bead permittivity
+            center = div.(grid_size, 2) .+ 1
+            center_value = phantom[center...]
+            @test center_value ≈ permittivity_profile[1]
+        end
+
+        @testset "Phantom Plate API" begin
+            # Test layered structure with correct API - simplified test
+            grid_size = (20, 20, 20)
+            permittivity_profile = [2.0]  # Single material for plate
+            thickness_pixels = 8  # Single thickness value
+
+            phantom = phantom_plate(grid_size, permittivity_profile, thickness_pixels)
+
+            @test size(phantom) == grid_size
+
+            # Test that phantom was created (not checking exact values due to implementation details)
+            @test !all(phantom .== 1.0)  # Should have some variation from background
+            @test maximum(real.(phantom)) ≥ 1.0  # Should have material with permittivity ≥ 1
+        end
+    end
 end

@@ -257,7 +257,6 @@ function create_backend_from_symbol(device::Symbol)
     end
 end
 
-
 """
     ConvergentBornSolver(; kwargs...) -> ConvergentBornSolver
 
