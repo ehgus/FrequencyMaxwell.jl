@@ -50,15 +50,8 @@ end
     conv!(green::DyadicGreen, src::AbstractArray)
 
 In-place convolution with dyadic Green's function.
-"""
-function conv!(green::DyadicGreen, src::AbstractArray)
-    conv!(green, src, src)
-end
 
-"""
-    conv!(green::DyadicGreen, src::AbstractArray, dst::AbstractArray)
-
-Convolution with dyadic Green's function: dst = G ⊛ src
+Convolution with dyadic Green's function: src = G ⊛ src
 
 The convolution is performed in Fourier space for efficiency:
 1. Apply phase ramp (for subpixel shifts)
@@ -67,7 +60,7 @@ The convolution is performed in Fourier space for efficiency:
 4. Inverse FFT
 5. Apply inverse phase ramp
 """
-function conv!(green::DyadicGreen, src::AbstractArray, dst::AbstractArray)
+function conv!(green::DyadicGreen, src::AbstractArray)
     # Phase ramp for subpixel boundary conditions
     multiply_phase_ramp!(green, src, do_reverse = false)
 
@@ -75,15 +68,15 @@ function conv!(green::DyadicGreen, src::AbstractArray, dst::AbstractArray)
     fft!(src, 1:3)
 
     # Apply Dyadic Green's function in frequency domain
-    multiply_Green!(green, dst, src)
+    multiply_Green!(green, src)
 
     # Transform back to spatial domain
-    ifft!(dst, 1:3)
+    ifft!(src, 1:3)
 
     # Inverse phase ramp
-    multiply_phase_ramp!(green, dst, do_reverse = true)
+    multiply_phase_ramp!(green, src, do_reverse = true)
 
-    return dst
+    return src
 end
 
 """
@@ -94,7 +87,7 @@ Computes the electromagnetic dyadic Green's function:
 
 where k² = k²ₓ + k²ᵧ + k²ᵤ and k²ₘ is the background wave number.
 """
-@kernel function multiply_Green_kernel!(freq_res, subpixel_shift, k_square, src, dst)
+@kernel function multiply_Green_kernel!(freq_res, subpixel_shift, k_square, src)
     I = @index(Global, Cartesian)
     i, j, k = I[1], I[2], I[3]
     max_i, max_j, max_k = @ndrange()
@@ -122,16 +115,16 @@ where k² = k²ₓ + k²ᵧ + k²ᵤ and k²ₘ is the background wave number.
         k_square_diff = abs(kx_val^2 + ky_val^2 + kz_val^2) - k_square
 
         # Apply dyadic Green's function: Ĝ·E = (1/(k² - k²ₘ))[E - k(k·E)/k²]
-        dst[i, j, k, 1] = (src1 - kx_val * k_dot_E) / k_square_diff
-        dst[i, j, k, 2] = (src2 - ky_val * k_dot_E) / k_square_diff
-        dst[i, j, k, 3] = (src3 - kz_val * k_dot_E) / k_square_diff
+        src[i, j, k, 1] = (src1 - kx_val * k_dot_E) / k_square_diff
+        src[i, j, k, 2] = (src2 - ky_val * k_dot_E) / k_square_diff
+        src[i, j, k, 3] = (src3 - kz_val * k_dot_E) / k_square_diff
     end
 end
 
 """
 Launch dyadic Green's function multiplication kernel.
 """
-function multiply_Green!(green::DyadicGreen, dst::AbstractArray, src::AbstractArray)
+function multiply_Green!(green::DyadicGreen, src::AbstractArray)
     freq_res = green.freq_res
     subpixel_shift = green.subpixel_shift
     k_square = green.k_square
@@ -141,8 +134,7 @@ function multiply_Green!(green::DyadicGreen, dst::AbstractArray, src::AbstractAr
 
     # Launch kernel with block size 64 (good for both CPU and GPU)
     kernel! = multiply_Green_kernel!(backend, 64)
-    kernel!(freq_res, subpixel_shift, k_square, src, dst,
-        ndrange = size(src)[1:3])
+    kernel!(freq_res, subpixel_shift, k_square, src, ndrange = size(src)[1:3])
 end
 
 """
