@@ -60,6 +60,7 @@ using Requires
 export
 # Solver types
       ConvergentBornSolver,
+      reset!,
 
 # Source types  
       PlaneWaveSource,

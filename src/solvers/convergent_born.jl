@@ -619,7 +619,12 @@ function _initialize_solver!(
                                       1))
 
     # Pad the potential (replicate boundary values)
-    solver.potential = _pad_array(potential_unpadded, solver.boundary_thickness_pixel, :replicate)
+    try
+        solver.potential = _pad_array(potential_unpadded, solver.boundary_thickness_pixel, :replicate)
+    catch e
+        error("The Pad_array information: $(solver.boundary_thickness_pixel) // $(size(potential_unpadded))")
+        throw(e)
+    end
 
     # Calculate eps_imag based on maximum potential value for numerical stability
     solver.eps_imag = max(T(2^-20), maximum(abs.(solver.potential)) * T(1.01))

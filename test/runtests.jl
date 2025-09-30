@@ -1,5 +1,6 @@
 using Test
 using FrequencyMaxwell
+using LinearAlgebra: norm
 
 @testset "FrequencyMaxwell.jl Tests" begin
     @testset "Core Solver" begin
@@ -258,12 +259,14 @@ using FrequencyMaxwell
     end
 end
 
+# Include essential test files for comprehensive coverage
+include("test_basic_solver.jl")                # Core solver functionality tests
+include("test_phantom_generation.jl")          # Phantom generation tests
+include("test_field_sources.jl")              # Field source tests
+
 # Include example integration tests
 include("test_examples.jl")
 
 # Include LinearSolve.jl integration tests
 include("test_linearsolve_integration.jl")
 
-# Include performance benchmarking tests (optional - can be run separately)
-# Uncomment the line below to include performance benchmarks in regular test suite
-# include("test_linearsolve_performance.jl")

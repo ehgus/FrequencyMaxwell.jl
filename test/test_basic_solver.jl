@@ -83,12 +83,10 @@ Tests fundamental solver initialization, configuration, and basic operations.
         @test isempty(solver.residual_history)
         @test solver.Bornmax == 0
 
-        # Test reset functionality if available
-        if hasmethod(reset!, (typeof(solver),))
-            reset!(solver)
-            @test solver.iteration_count == 0
-            @test isempty(solver.residual_history)
-        end
+        # Test reset functionality
+        reset!(solver)
+        @test solver.iteration_count == 0
+        @test isempty(solver.residual_history)
     end
 
     @testset "Solver Parameter Validation" begin

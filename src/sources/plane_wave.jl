@@ -182,6 +182,8 @@ function _generate_incident_fields_arrays(
     # Calculate wave number in background medium
     k0 = T(2π) * sqrt(grid_config.permittivity_bg) / source.wavelength
     Z0 = T(376.730313668)  # Impedance of free space
+    n_bg = sqrt(grid_config.permittivity_bg)
+    Z_medium = Z0 / n_bg
 
     # Initialize field arrays
     E_field = zeros(Complex{T}, grid_size..., 3)
@@ -191,7 +193,7 @@ function _generate_incident_fields_arrays(
     phase_array = _calculate_phase_array(source, grid_config, k0)
 
     # Calculate magnetic field polarization: H₀ = k × E₀ / Z₀
-    H_polarization = cross(source.k_vector, source.polarization) / Z0
+    H_polarization = cross(source.k_vector, source.polarization) / Z_medium
 
     # Fill field arrays
     for component in 1:3
