@@ -21,9 +21,9 @@ function basic_scattering_example()
     println("FrequencyMaxwell Basic Scattering Example")
     println("=" ^ 45)
 
-    # Step 1: Configure the electromagnetic solver
-    println("Setting up solver configuration...")
-    config = ConvergentBornConfig(
+    # Step 1: Create electromagnetic solver with integrated configuration
+    println("Creating solver with streamlined API...")
+    solver = ConvergentBornSolver(
         wavelength = 532e-9,          # 532 nm (green laser)
         permittivity_bg = 1.333^2,    # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
@@ -33,19 +33,15 @@ function basic_scattering_example()
     )
 
     println("Configuration:")
-    println("  Wavelength: $(config.wavelength * 1e9) nm")
-    println("  Background n: $(sqrt(config.permittivity_bg))")
-    println("  Grid size: $(config.grid_size)")
-    println("  Domain size: $(domain_size(config) .* 1e6) μm")
+    println("  Wavelength: $(solver.wavelength * 1e9) nm")
+    println("  Background n: $(sqrt(solver.permittivity_bg))")
+    println("  Grid size: $(solver.grid_size)")
+    println("  Domain size: $(domain_size(solver) .* 1e6) μm")
 
-    # Step 2: Create the electromagnetic solver
-    println("\\nCreating solver...")
-    solver = ConvergentBornSolver(config)
-
-    # Step 3: Define the incident plane wave source
+    # Step 2: Define the incident plane wave source
     println("Setting up plane wave source...")
     source = PlaneWaveSource(
-        wavelength = config.wavelength,
+        wavelength = solver.wavelength,
         polarization = [1.0, 0.0, 0.0],  # X-polarized light
         k_vector = [0.0, 0.0, 1.0],      # Propagating in +Z direction
         amplitude = 1.0                   # 1 V/m amplitude
@@ -56,26 +52,26 @@ function basic_scattering_example()
     println("  Polarization: $(source.polarization)")
     println("  Propagation: $(source.k_vector)")
 
-    # Step 4: Create a spherical bead phantom
+    # Step 3: Create a spherical bead phantom
     println("\\nGenerating phantom...")
     bead_radius_pixels = 10.0  # 500 nm radius (10 pixels × 50 nm)
     phantom = phantom_bead(
-        config.grid_size,
+        solver.grid_size,
         [1.46^2],                 # Silica bead (n=1.46)
         bead_radius_pixels        # 500 nm radius
     )
 
     # Calculate phantom statistics
-    bead_volume = count(real.(phantom) .> config.permittivity_bg * 1.05)
-    total_volume = prod(config.grid_size)
+    bead_volume = count(real.(phantom) .> solver.permittivity_bg * 1.05)
+    total_volume = prod(solver.grid_size)
     volume_fraction = bead_volume / total_volume
 
     println("Phantom statistics:")
     println("  Bead material: n = $(sqrt(1.46^2)) (silica)")
-    println("  Bead radius: $(bead_radius_pixels * config.resolution[1] * 1e9) nm")
+    println("  Bead radius: $(bead_radius_pixels * solver.resolution[1] * 1e9) nm")
     println("  Volume fraction: $(round(volume_fraction * 100, digits=2))%")
 
-    # Step 5: Solve the electromagnetic scattering problem
+    # Step 4: Solve the electromagnetic scattering problem
     println("\\nSolving electromagnetic scattering...")
     E_field, H_field = solve(solver, source, phantom)
 
@@ -84,7 +80,7 @@ function basic_scattering_example()
     println("  Electric field size: $(size(E_field.E))")
     println("  Magnetic field size: $(size(H_field.H))")
 
-    # Step 6: Analyze results
+    # Step 5: Analyze results
     println("\\nAnalyzing results...")
 
     # Calculate field intensity

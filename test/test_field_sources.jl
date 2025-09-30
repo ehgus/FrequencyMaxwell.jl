@@ -6,7 +6,7 @@ Tests electromagnetic source generation and field initialization.
 @testset "Electromagnetic Sources" begin
     @testset "Plane Wave Source" begin
         # Test basic plane wave source - matches original examples
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 532e-9,
             permittivity_bg = 1.333^2,
             resolution = (50e-9, 50e-9, 50e-9),
@@ -15,13 +15,13 @@ Tests electromagnetic source generation and field initialization.
 
         # Test plane wave propagating in z-direction
         source = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 0.0, 0.0),  # x-polarized
             direction = 3,  # z-direction
             k_transverse = (0.0, 0.0)  # Normal incidence
         )
 
-        @test source.config == config
+        @test source.solver == solver
         @test source.polarization == (1.0, 0.0, 0.0)
         @test source.direction == 3
         @test source.k_transverse == (0.0, 0.0)
@@ -29,8 +29,8 @@ Tests electromagnetic source generation and field initialization.
         # Test field generation
         E_field, H_field = generate_fields(source)
 
-        @test size(E_field) == (config.grid_size..., 3)
-        @test size(H_field) == (config.grid_size..., 3)
+        @test size(E_field) == (solver.grid_size..., 3)
+        @test size(H_field) == (solver.grid_size..., 3)
 
         # Test field properties
         @test !any(isnan.(E_field))
@@ -40,7 +40,7 @@ Tests electromagnetic source generation and field initialization.
     end
 
     @testset "Source Polarization" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
@@ -49,7 +49,7 @@ Tests electromagnetic source generation and field initialization.
 
         # Test x-polarization
         source_x = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
@@ -58,7 +58,7 @@ Tests electromagnetic source generation and field initialization.
 
         # Test y-polarization
         source_y = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (0.0, 1.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
@@ -67,7 +67,7 @@ Tests electromagnetic source generation and field initialization.
 
         # Test circular polarization
         source_circ = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 1.0im, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
@@ -75,14 +75,14 @@ Tests electromagnetic source generation and field initialization.
         E_circ, H_circ = generate_fields(source_circ)
 
         # Verify orthogonality for linear polarizations
-        center = div.(config.grid_size, 2) .+ 1
+        center = div.(solver.grid_size, 2) .+ 1
         Ex_center = E_x[center..., 1]
         Ey_center = E_y[center..., 2]
         @test abs(real(Ex_center * conj(Ey_center))) < 1e-10  # Should be orthogonal
     end
 
     @testset "Oblique Incidence" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 355e-9,  # UV wavelength from grating example
             permittivity_bg = 1.0,
             resolution = (10e-9, 10e-9, 10e-9),
@@ -94,11 +94,11 @@ Tests electromagnetic source generation and field initialization.
 
         for order in illumination_orders
             # Calculate transverse k-vector for this order
-            k_y = 2π * order / (config.grid_size[2] * config.resolution[2])
+            k_y = 2π * order / (solver.grid_size[2] * solver.resolution[2])
             k_transverse = (0.0, k_y)
 
             source = PlaneWaveSource(
-                config,
+                solver.wavelength,
                 polarization = (1.0, 0.0, 0.0),
                 direction = 3,
                 k_transverse = k_transverse
@@ -107,8 +107,8 @@ Tests electromagnetic source generation and field initialization.
             E_field, H_field = generate_fields(source)
 
             # Test that fields are generated properly
-            @test size(E_field) == (config.grid_size..., 3)
-            @test size(H_field) == (config.grid_size..., 3)
+            @test size(E_field) == (solver.grid_size..., 3)
+            @test size(H_field) == (solver.grid_size..., 3)
 
             # Test that oblique incidence creates expected phase patterns
             if order != 0
@@ -121,7 +121,7 @@ Tests electromagnetic source generation and field initialization.
     end
 
     @testset "Source Field Properties" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 633e-9,
             permittivity_bg = 1.33^2,
             resolution = (50e-9, 50e-9, 50e-9),
@@ -129,7 +129,7 @@ Tests electromagnetic source generation and field initialization.
         )
 
         source = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
@@ -149,11 +149,11 @@ Tests electromagnetic source generation and field initialization.
 
         # Test impedance relationship for plane wave
         # |H| ≈ |E| * sqrt(ε/μ) = |E| * sqrt(ε₀/μ₀) * sqrt(εᵣ)
-        n_bg = sqrt(config.permittivity_bg)
+        n_bg = sqrt(solver.permittivity_bg)
         Z0 = 377.0  # Free space impedance
         Z_medium = Z0 / n_bg
 
-        center = div.(config.grid_size, 2) .+ 1
+        center = div.(solver.grid_size, 2) .+ 1
         E_center_mag = abs(E_field[center..., 1])
         H_center_mag = abs(H_field[center..., 2])  # H_y for E_x
 
@@ -164,7 +164,7 @@ Tests electromagnetic source generation and field initialization.
     end
 
     @testset "Multiple Sources" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
@@ -173,16 +173,16 @@ Tests electromagnetic source generation and field initialization.
 
         # Create multiple sources for coherent superposition
         sources = [
-            PlaneWaveSource(config, polarization = (1.0, 0.0, 0.0),
+            PlaneWaveSource(solver.wavelength, polarization = (1.0, 0.0, 0.0),
                 direction = 3, k_transverse = (0.0, 0.0)),
-            PlaneWaveSource(config, polarization = (0.0, 1.0, 0.0),
+            PlaneWaveSource(solver.wavelength, polarization = (0.0, 1.0, 0.0),
                 direction = 3, k_transverse = (0.0, 0.0))
         ]
 
         E_total, H_total = superpose_sources(sources)
 
-        @test size(E_total) == (config.grid_size..., 3)
-        @test size(H_total) == (config.grid_size..., 3)
+        @test size(E_total) == (solver.grid_size..., 3)
+        @test size(H_total) == (solver.grid_size..., 3)
 
         # Test that superposition is linear
         E1, H1 = generate_fields(sources[1])

@@ -6,28 +6,24 @@ CurrentModule = FrequencyMaxwell
 
 This page documents the complete API for FrequencyMaxwell.jl, organized by functionality.
 
-## Configuration Types
+## Solver Types
 
-### ConvergentBornConfig
+### ConvergentBornSolver
+
+The main electromagnetic solver with integrated configuration.
 
 ```@docs
-ConvergentBornConfig
+ConvergentBornSolver
 ```
 
 ### Configuration Utilities
+
+Utility functions for working with solver parameters.
 
 ```@docs
 domain_size
 grid_spacing
 wavenumber_background
-```
-
-## Solver Types
-
-### ConvergentBornSolver
-
-```@docs
-ConvergentBornSolver
 ```
 
 ### Core Solving Function

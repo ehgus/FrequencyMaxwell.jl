@@ -10,12 +10,12 @@ using FrequencyMaxwell
 using LinearAlgebra
 
 """
-Performance test configuration with medium problem sizes for benchmarking.
+Performance test solver creation with medium problem sizes for benchmarking.
 """
-function create_performance_config(T = Float64; grid_size = (48, 48, 24), linear_solver = KrylovJL_GMRES())
-    return ConvergentBornConfig(
+function create_performance_solver(T = Float64; grid_size = (48, 48, 24), linear_solver = KrylovJL_GMRES())
+    return ConvergentBornSolver(
         wavelength = T(500e-9),           # 500 nm
-        permittivity_bg = T(1.33^2),      # Water background  
+        permittivity_bg = T(1.33^2),      # Water background
         resolution = (T(50e-9), T(50e-9), T(50e-9)),  # 50 nm isotropic
         grid_size = grid_size,
         boundary_thickness = (T(0.0), T(0.0), T(300e-9)),
@@ -31,9 +31,9 @@ end
 """
 Create performance test permittivity with multiple scatterers.
 """
-function create_performance_permittivity(config::ConvergentBornConfig{T}) where {T}
-    grid_size = config.grid_size
-    eps_bg = config.permittivity_bg
+function create_performance_permittivity(solver::ConvergentBornSolver{T}) where {T}
+    grid_size = solver.grid_size
+    eps_bg = solver.permittivity_bg
     permittivity = fill(Complex{T}(eps_bg), grid_size)
 
     # Add multiple spherical scatterers for more complex scattering
@@ -64,12 +64,11 @@ end
 
         for algorithm in algorithms
             @testset "Performance: $(typeof(algorithm))" begin
-                config = create_performance_config(; linear_solver = algorithm)
-                solver = ConvergentBornSolver(config)
-                permittivity = create_performance_permittivity(config)
+                solver = create_performance_solver(; linear_solver = algorithm)
+                permittivity = create_performance_permittivity(solver)
 
                 source = PlaneWaveSource(
-                    wavelength = config.wavelength,
+                    wavelength = solver.wavelength,
                     polarization = [1.0, 0.0, 0.0],
                     k_vector = [0.0, 0.0, 1.0],
                     amplitude = 1.0
@@ -87,8 +86,8 @@ end
                 @test elapsed < 60.0  # 1 minute max for small problem
 
                 # Test output quality
-                @test size(E_field) == (config.grid_size..., 3)
-                @test size(H_field) == (config.grid_size..., 3)
+                @test size(E_field) == (solver.grid_size..., 3)
+                @test size(H_field) == (solver.grid_size..., 3)
                 @test all(isfinite.(E_field))
                 @test all(isfinite.(H_field))
             end
@@ -100,12 +99,11 @@ end
 
         for grid_size in grid_sizes
             @testset "Grid $(grid_size)" begin
-                config = create_performance_config(; grid_size = grid_size, linear_solver = KrylovJL_GMRES())
-                solver = ConvergentBornSolver(config)
-                permittivity = create_performance_permittivity(config)
+                solver = create_performance_solver(; grid_size = grid_size, linear_solver = KrylovJL_GMRES())
+                permittivity = create_performance_permittivity(solver)
 
                 source = PlaneWaveSource(
-                    wavelength = config.wavelength,
+                    wavelength = solver.wavelength,
                     polarization = [1.0, 0.0, 0.0],
                     k_vector = [0.0, 0.0, 1.0],
                     amplitude = 1.0
@@ -123,12 +121,11 @@ end
     end
 
     @testset "Memory Usage Validation" begin
-        config = create_performance_config(; grid_size = (32, 32, 16), linear_solver = KrylovJL_GMRES())
-        solver = ConvergentBornSolver(config)
-        permittivity = create_performance_permittivity(config)
+        solver = create_performance_solver(; grid_size = (32, 32, 16), linear_solver = KrylovJL_GMRES())
+        permittivity = create_performance_permittivity(solver)
 
         source = PlaneWaveSource(
-            wavelength = config.wavelength,
+            wavelength = solver.wavelength,
             polarization = [1.0, 0.0, 0.0],
             k_vector = [0.0, 0.0, 1.0],
             amplitude = 1.0
@@ -152,13 +149,12 @@ end
 
     @testset "Precision Validation" begin
         @testset "Float32 Performance" begin
-            config32 = create_performance_config(
+            solver32 = create_performance_solver(
                 Float32; grid_size = (24, 24, 12), linear_solver = KrylovJL_GMRES())
-            solver32 = ConvergentBornSolver(config32)
-            permittivity32 = create_performance_permittivity(config32)
+            permittivity32 = create_performance_permittivity(solver32)
 
             source32 = PlaneWaveSource(
-                wavelength = config32.wavelength,
+                wavelength = solver32.wavelength,
                 polarization = [1.0f0, 0.0f0, 0.0f0],
                 k_vector = [0.0f0, 0.0f0, 1.0f0],
                 amplitude = 1.0f0

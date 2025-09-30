@@ -23,20 +23,17 @@ inverse design, and optimization problems.
 ```julia
 using FrequencyMaxwell
 
-# Configure solver
-config = ConvergentBornConfig(
+# Create solver with streamlined API (recommended)
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32)
 )
 
-# Create solver
-solver = ConvergentBornSolver(config)
-
 # Define source
 source = PlaneWaveSource(
-    wavelength = config.wavelength,
+    wavelength = solver.config.wavelength,
     polarization = [1.0, 0.0, 0.0],
     k_vector = [0.0, 0.0, 1.0]
 )
@@ -61,9 +58,6 @@ using Requires
 
 # Export core types and functions
 export
-# Configuration types
-      ConvergentBornConfig,
-
 # Solver types
       ConvergentBornSolver,
 
@@ -102,7 +96,6 @@ export
 
 # Include submodules in correct order (dependencies first)
 include("core/types.jl")
-include("core/configuration.jl")
 include("core/dyadic_green.jl")
 include("core/curl.jl")
 include("sources/abstract_source.jl")

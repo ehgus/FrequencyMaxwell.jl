@@ -13,9 +13,9 @@ function main()
     println("FrequencyMaxwell Basic Scattering Example")
     println("=" ^ 45)
 
-    # Configure the electromagnetic solver with optimized CBS parameters
-    println("Setting up solver configuration...")
-    config = ConvergentBornConfig(
+    # Configure and create the electromagnetic solver with optimized CBS parameters
+    println("Creating solver with enhanced API...")
+    solver = ConvergentBornSolver(
         wavelength = 532e-9,      # 532 nm (green laser)
         permittivity_bg = 1.333^2, # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
@@ -30,20 +30,16 @@ function main()
     )
 
     println("Configuration:")
-    println("  Wavelength: $(config.wavelength * 1e9) nm")
-    println("  Background n: $(sqrt(config.permittivity_bg))")
-    println("  Grid size: $(config.grid_size)")
-    println("  Resolution: $(config.resolution .* 1e9) nm")
-    println("  Domain size: $(domain_size(config) .* 1e6) μm")
-
-    # Create the electromagnetic solver
-    println("\nCreating solver...")
-    solver = ConvergentBornSolver(config)
+    println("  Wavelength: $(solver.wavelength * 1e9) nm")
+    println("  Background n: $(sqrt(solver.permittivity_bg))")
+    println("  Grid size: $(solver.grid_size)")
+    println("  Resolution: $(solver.resolution .* 1e9) nm")
+    println("  Domain size: $(domain_size(solver) .* 1e6) μm")
 
     # Define the incident plane wave source
     println("Setting up plane wave source...")
     source = PlaneWaveSource(
-        wavelength = config.wavelength,
+        wavelength = solver.wavelength,
         polarization = [1.0, 0.0, 0.0],    # X-polarized
         k_vector = [0.0, 0.0, 1.0],        # Propagating in +Z
         amplitude = 1.0                     # 1 V/m amplitude
@@ -63,19 +59,19 @@ function main()
     println("\nGenerating phantom...")
     bead_radius_pixels = 10.0  # 500 nm radius (10 pixels * 50 nm)
     phantom = phantom_bead(
-        config.grid_size,
+        solver.grid_size,
         [1.46^2],                  # SiO2 bead (n=1.46, realistic optical material)
         bead_radius_pixels        # 500 nm radius
     )
 
     # Calculate phantom statistics
     bead_volume = count(real.(phantom) .> 1.1)  # Voxels with elevated permittivity
-    total_volume = prod(config.grid_size)
+    total_volume = prod(solver.grid_size)
     volume_fraction = bead_volume / total_volume
 
     println("Phantom statistics:")
     println("  Bead material: n = $(sqrt(1.46^2)) (silica)")
-    println("  Bead radius: $(bead_radius_pixels * config.resolution[1] * 1e9) nm")
+    println("  Bead radius: $(bead_radius_pixels * solver.resolution[1] * 1e9) nm")
     println("  Volume fraction: $(round(volume_fraction * 100, digits=2))%")
 
     heatmap(abs.(phantom[div(size(phantom, 1), 2), :, :]))
@@ -87,8 +83,8 @@ function main()
     E_field, H_field = solve(solver, source, phantom)
 
     # Wrap fields in structured container
-    fields = ElectromagneticField(E_field, H_field, config.grid_size,
-        config.resolution, config.wavelength)
+    fields = ElectromagneticField(E_field, H_field, solver.grid_size,
+        solver.resolution, solver.wavelength)
 
     println("Solution completed successfully!")
     println("Field properties:")
@@ -107,7 +103,7 @@ function main()
     println("  Enhancement factor: $(round(enhancement, digits=2))")
 
     # Extract central plane for analysis
-    central_plane = extract_plane(fields, 3, div(config.grid_size[3], 2))
+    central_plane = extract_plane(fields, 3, div(solver.grid_size[3], 2))
     plane_intensity = field_intensity(central_plane)
 
     println("Central plane analysis:")
@@ -115,13 +111,6 @@ function main()
     println("  Mean intensity: $(round(sum(plane_intensity)/length(plane_intensity), digits=4))")
 
     println("\nExample completed successfully!")
-    println("This demonstrates the basic FrequencyMaxwell workflow:")
-    println("1. Configure solver parameters")
-    println("2. Create electromagnetic solver")
-    println("3. Define incident field source")
-    println("4. Generate object phantom")
-    println("5. Solve scattering problem")
-    println("6. Analyze results")
 
     return nothing
 end

@@ -2,29 +2,29 @@ using Test
 using FrequencyMaxwell
 
 @testset "FrequencyMaxwell.jl Tests" begin
-    @testset "Core Configuration" begin
-        @testset "ConvergentBornConfig Construction" begin
+    @testset "Core Solver" begin
+        @testset "ConvergentBornSolver Construction" begin
             # Test basic construction
-            config = ConvergentBornConfig(
+            solver = ConvergentBornSolver(
                 wavelength = 500e-9,
                 permittivity_bg = 1.33^2,
                 resolution = (50e-9, 50e-9, 50e-9),
                 grid_size = (128, 128, 32)
             )
 
-            @test config.wavelength ≈ 500e-9
-            @test config.permittivity_bg ≈ 1.33^2
-            @test config.resolution == (50e-9, 50e-9, 50e-9)
-            @test config.grid_size == (128, 128, 32)
+            @test solver.wavelength ≈ 500e-9
+            @test solver.permittivity_bg ≈ 1.33^2
+            @test solver.resolution == (50e-9, 50e-9, 50e-9)
+            @test solver.grid_size == (128, 128, 32)
 
             # Test validation
-            @test_throws ArgumentError ConvergentBornConfig(
+            @test_throws ArgumentError ConvergentBornSolver(
                 wavelength = -1.0,  # Invalid
                 resolution = (50e-9, 50e-9, 50e-9),
                 grid_size = (128, 128, 32)
             )
 
-            @test_throws ArgumentError ConvergentBornConfig(
+            @test_throws ArgumentError ConvergentBornSolver(
                 wavelength = 500e-9,
                 permittivity_bg = -1.0,  # Invalid permittivity
                 resolution = (50e-9, 50e-9, 50e-9),
@@ -32,15 +32,15 @@ using FrequencyMaxwell
             )
         end
 
-        @testset "Configuration Utilities" begin
-            config = ConvergentBornConfig(
+        @testset "Solver Utilities" begin
+            solver = ConvergentBornSolver(
                 wavelength = 500e-9,
                 resolution = (50e-9, 50e-9, 100e-9),
                 grid_size = (64, 64, 32)
             )
 
             # Test domain size calculation
-            domain = domain_size(config)
+            domain = domain_size(solver)
             @test domain[1] ≈ 64 * 50e-9
             @test domain[2] ≈ 64 * 50e-9
             @test domain[3] ≈ 32 * 100e-9
@@ -140,9 +140,9 @@ using FrequencyMaxwell
         end
     end
 
-    @testset "Configuration Utilities" begin
+    @testset "Solver Utilities" begin
         @testset "Domain Calculations" begin
-            config = ConvergentBornConfig(
+            solver = ConvergentBornSolver(
                 wavelength = 633e-9,
                 permittivity_bg = 1.0,
                 resolution = (100e-9, 100e-9, 200e-9),
@@ -151,13 +151,13 @@ using FrequencyMaxwell
 
             # Test utility functions if they exist
             if isdefined(FrequencyMaxwell, :grid_spacing)
-                spacing = grid_spacing(config)
-                @test spacing == config.resolution
+                spacing = grid_spacing(solver)
+                @test spacing == solver.resolution
             end
 
             if isdefined(FrequencyMaxwell, :wavenumber_background)
-                k_bg = wavenumber_background(config)
-                @test k_bg ≈ 2π * sqrt(config.permittivity_bg) / config.wavelength
+                k_bg = wavenumber_background(solver)
+                @test k_bg ≈ 2π * sqrt(solver.permittivity_bg) / solver.wavelength
             end
         end
     end
@@ -166,11 +166,11 @@ using FrequencyMaxwell
         @testset "SiO2 Bead Example Setup" begin
             # Replicate the core setup from forward_SiO2_5um_in_water.jl
 
-            # Configuration matching the original example (scaled down)
-            config = ConvergentBornConfig(
+            # Solver matching the original example (scaled down)
+            solver = ConvergentBornSolver(
                 wavelength = 532e-9,  # 532 nm green laser
                 permittivity_bg = 1.333^2,  # Water
-                resolution = (100e-9, 100e-9, 100e-9),  # 100 nm resolution  
+                resolution = (100e-9, 100e-9, 100e-9),  # 100 nm resolution
                 grid_size = (51, 51, 48)  # Smaller than original 201x201x191
             )
 
@@ -178,30 +178,30 @@ using FrequencyMaxwell
             permittivity_SiO2 = 1.4607^2
             radius_pixels = 5  # Approximately 0.5 μm radius
             phantom = phantom_bead(
-                config.grid_size,
+                solver.grid_size,
                 [permittivity_SiO2],  # Single bead material
                 radius_pixels
             )
 
             # Test phantom properties
-            @test size(phantom) == config.grid_size
+            @test size(phantom) == solver.grid_size
             @test phantom[1, 1, 1] ≈ 1.0  # Background is 1.0 by default
 
             # Test bead is present at center
-            center = div.(config.grid_size, 2) .+ 1
+            center = div.(solver.grid_size, 2) .+ 1
             @test phantom[center...] ≈ permittivity_SiO2
 
             # Test proper domain size
-            domain = domain_size(config)
+            domain = domain_size(solver)
             @test domain[1] ≈ 51 * 100e-9  # 5.1 μm
-            @test domain[2] ≈ 51 * 100e-9  # 5.1 μm  
+            @test domain[2] ≈ 51 * 100e-9  # 5.1 μm
             @test domain[3] ≈ 48 * 100e-9  # 4.8 μm
         end
 
         @testset "Grating Example Setup" begin
             # Replicate setup from adjoint_grating.jl (simplified)
 
-            config = ConvergentBornConfig(
+            solver = ConvergentBornSolver(
                 wavelength = 355e-9,  # UV wavelength
                 permittivity_bg = 1.4338^2,  # PDMS background
                 resolution = (20e-9, 20e-9, 20e-9),  # 20 nm resolution
@@ -213,13 +213,13 @@ using FrequencyMaxwell
             thickness_pixels = 8  # Single layer thickness
 
             phantom = phantom_plate(
-                config.grid_size,
+                solver.grid_size,
                 [permittivity_TiO2],
                 thickness_pixels
             )
 
             # Test structure properties (less specific due to implementation details)
-            @test size(phantom) == config.grid_size
+            @test size(phantom) == solver.grid_size
             @test maximum(real.(phantom)) > 1.0  # Should have high-index material
             @test maximum(imag.(phantom)) > 0.0  # Should have lossy material
 
@@ -230,7 +230,7 @@ using FrequencyMaxwell
         @testset "Performance Example Setup" begin
             # Replicate performance test setup (very small for testing)
 
-            config = ConvergentBornConfig(
+            solver = ConvergentBornSolver(
                 wavelength = 532e-9,
                 permittivity_bg = 1.333^2,
                 resolution = (200e-9, 200e-9, 200e-9),  # Coarser resolution
@@ -241,17 +241,17 @@ using FrequencyMaxwell
             permittivity_sp = 1.4607^2
             radius_pixels = 2
             phantom = phantom_bead(
-                config.grid_size,
+                solver.grid_size,
                 [permittivity_sp],
                 radius_pixels
             )
 
             # Test that phantom was created properly
-            @test size(phantom) == config.grid_size
+            @test size(phantom) == solver.grid_size
 
             # Basic timing test (just to ensure setup works)
             time_start = time()
-            _ = phantom_bead(config.grid_size, [2.0], 3)
+            _ = phantom_bead(solver.grid_size, [2.0], 3)
             elapsed = time() - time_start
             @test elapsed < 1.0  # Should be very fast for small problem
         end

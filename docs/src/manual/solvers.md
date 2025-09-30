@@ -26,25 +26,30 @@ Where:
 #### ConvergentBornSolver Type
 
 ```julia
-solver = ConvergentBornSolver(config::ConvergentBornConfig)
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (128, 128, 32)
+)
 ```
 
-The solver type maintains:
-- **Immutable configuration**: Physical and numerical parameters
+The solver type integrates:
+- **Configuration fields**: Physical and numerical parameters
 - **Mutable state**: Arrays for fields, Green's functions, and working memory
 - **LinearSolve.jl integration**: Custom operators for flexible solving
 
-#### State Management
+#### Integrated Design
 
-The solver separates concerns between configuration and state:
+The solver combines configuration and state in a single object:
 
-- **Configuration** (`ConvergentBornConfig`): Immutable parameters defining the problem
-- **State** (`ConvergentBornSolver`): Mutable arrays and operators for computation
+- **Direct field access**: `solver.wavelength`, `solver.grid_size`, etc.
+- **Type-safe validation**: All parameters validated during construction
+- **Utility functions**: `domain_size(solver)`, `wavenumber_background(solver)`
 
-This design enables:
-- Multiple solvers from the same configuration
-- State reuse across multiple source configurations
-- Memory-efficient handling of parameter studies
+This design provides:
+- Simplified API with single solver object
+- Direct access to all configuration parameters
 
 ### Core Solving Function
 

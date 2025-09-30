@@ -1,17 +1,17 @@
-# Configuration
+# Solver Configuration
 
-The configuration system in FrequencyMaxwell.jl uses type-safe, immutable configuration objects that validate all parameters and provide automatic type promotion. This approach ensures reproducible simulations and enables compile-time optimizations.
+FrequencyMaxwell.jl uses an integrated configuration system where all parameters are directly embedded in the `ConvergentBornSolver` object. This streamlined approach provides type-safe parameter validation and automatic type promotion.
 
-## ConvergentBornConfig
+## ConvergentBornSolver Configuration
 
-The primary configuration type for electromagnetic simulations is `ConvergentBornConfig`, which contains all physical and numerical parameters needed for the Convergent Born Iterative Solver.
+The `ConvergentBornSolver` contains all physical and numerical parameters needed for electromagnetic simulations.
 
 ### Basic Usage
 
 ```julia
 using FrequencyMaxwell
 
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
@@ -111,13 +111,13 @@ config = ConvergentBornConfig(
 
 ```julia
 # Get total domain size
-domain = domain_size(config)  # Returns (Lx, Ly, Lz) in meters
+domain = domain_size(solver)  # Returns (Lx, Ly, Lz) in meters
 
 # Get voxel spacing (same as resolution)
-spacing = grid_spacing(config)  # Returns (dx, dy, dz) in meters
+spacing = grid_spacing(solver)  # Returns (dx, dy, dz) in meters
 
 # Get background wavenumber
-k0 = wavenumber_background(config)  # Returns k₀ = 2π/λ in rad/m
+k0 = wavenumber_background(solver)  # Returns k₀ = 2π/λ in rad/m
 ```
 
 ### Validation and Type Promotion

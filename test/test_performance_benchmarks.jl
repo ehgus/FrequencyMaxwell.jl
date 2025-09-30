@@ -6,7 +6,7 @@ Tests solver performance characteristics and scaling behavior.
 @testset "Performance Benchmarks" begin
     @testset "Basic Timing Benchmarks" begin
         # Basic performance test with known problem size
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 532e-9,
             permittivity_bg = 1.333^2,
             resolution = (50e-9, 50e-9, 50e-9),
@@ -17,20 +17,18 @@ Tests solver performance characteristics and scaling behavior.
         permittivity_bead = 1.4607^2
         radius_pixels = 5
         phantom = create_spherical_phantom(
-            config.grid_size,
-            config.permittivity_bg,
+            solver.grid_size,
+            solver.permittivity_bg,
             permittivity_bead,
             radius_pixels
         )
 
         source = PlaneWaveSource(
-            config,
+            solver,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
-
-        solver = ConvergentBornSolver(config)
         set_permittivity!(solver, phantom)
         set_Born_max!(solver, 10)
 
@@ -44,8 +42,8 @@ Tests solver performance characteristics and scaling behavior.
 
         # Basic performance assertions
         @test elapsed_time < 60.0  # Should complete in reasonable time
-        @test size(E_field) == (config.grid_size..., 3, 1)
-        @test size(H_field) == (config.grid_size..., 3, 1)
+        @test size(E_field) == (solver.grid_size..., 3, 1)
+        @test size(H_field) == (solver.grid_size..., 3, 1)
 
         # Test memory usage is reasonable (indirect test)
         GC.gc()  # Force garbage collection
@@ -53,7 +51,7 @@ Tests solver performance characteristics and scaling behavior.
     end
 
     @testset "Scaling with Born Iterations" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
@@ -61,17 +59,15 @@ Tests solver performance characteristics and scaling behavior.
         )
 
         # Simple scatterer
-        phantom = ones(ComplexF64, config.grid_size)
+        phantom = ones(ComplexF64, solver.grid_size)
         phantom[14:18, 14:18, 14:18] .= 1.2
 
         source = PlaneWaveSource(
-            config,
+            solver,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
-
-        solver = ConvergentBornSolver(config)
         set_permittivity!(solver, phantom)
 
         # Test scaling with Born iterations
@@ -97,36 +93,32 @@ Tests solver performance characteristics and scaling behavior.
 
     @testset "Grid Size Scaling" begin
         # Test how performance scales with grid size
-        base_config = ConvergentBornConfig(
-            wavelength = 500e-9,
-            permittivity_bg = 1.0,
-            resolution = (100e-9, 100e-9, 100e-9)
-        )
+        base_wavelength = 500e-9
+        base_permittivity_bg = 1.0
+        base_resolution = (100e-9, 100e-9, 100e-9)
 
         grid_sizes = [(16, 16, 16), (24, 24, 24), (32, 32, 32)]
         times = []
 
         for grid_size in grid_sizes
-            config = ConvergentBornConfig(
-                wavelength = base_config.wavelength,
-                permittivity_bg = base_config.permittivity_bg,
-                resolution = base_config.resolution,
+            solver = ConvergentBornSolver(
+                wavelength = base_wavelength,
+                permittivity_bg = base_permittivity_bg,
+                resolution = base_resolution,
                 grid_size = grid_size
             )
 
             # Simple scatterer at center
-            phantom = ones(ComplexF64, config.grid_size)
+            phantom = ones(ComplexF64, solver.grid_size)
             center_range = div.(grid_size, 4):(3 * div.(grid_size, 4))
             phantom[center_range[1], center_range[2], center_range[3]] .= 1.1
 
             source = PlaneWaveSource(
-                config,
+                solver,
                 polarization = (1.0, 0.0, 0.0),
                 direction = 3,
                 k_transverse = (0.0, 0.0)
             )
-
-            solver = ConvergentBornSolver(config)
             set_permittivity!(solver, phantom)
             set_Born_max!(solver, 3)
 
@@ -144,24 +136,22 @@ Tests solver performance characteristics and scaling behavior.
     end
 
     @testset "Memory Usage Patterns" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)
         )
 
-        phantom = ones(ComplexF64, config.grid_size)
+        phantom = ones(ComplexF64, solver.grid_size)
         phantom[14:18, 14:18, 14:18] .= 1.2
 
         source = PlaneWaveSource(
-            config,
+            solver,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
-
-        solver = ConvergentBornSolver(config)
         set_permittivity!(solver, phantom)
         set_Born_max!(solver, 5)
 
@@ -180,22 +170,20 @@ Tests solver performance characteristics and scaling behavior.
 
         # Test that memory usage is reasonable
         # (This is a rough test - exact values depend on implementation)
-        expected_field_memory = sizeof(ComplexF64) * prod(config.grid_size) * 3 * 2  # E and H fields
+        expected_field_memory = sizeof(ComplexF64) * prod(solver.grid_size) * 3 * 2  # E and H fields
         @test memory_used < expected_field_memory * 10  # Allow for overhead
     end
 
     @testset "Multiple Source Performance" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32)
         )
 
-        phantom = ones(ComplexF64, config.grid_size)
+        phantom = ones(ComplexF64, solver.grid_size)
         phantom[14:18, 14:18, 14:18] .= 1.2
-
-        solver = ConvergentBornSolver(config)
         set_permittivity!(solver, phantom)
         set_Born_max!(solver, 3)
 
@@ -206,9 +194,9 @@ Tests solver performance characteristics and scaling behavior.
         for num_sources in num_sources_list
             sources = []
             for i in 1:num_sources
-                k_y = 2π * (i-1) / (config.grid_size[2] * config.resolution[2])
+                k_y = 2π * (i-1) / (solver.grid_size[2] * solver.resolution[2])
                 source = PlaneWaveSource(
-                    config,
+                    solver,
                     polarization = (1.0, 0.0, 0.0),
                     direction = 3,
                     k_transverse = (0.0, k_y)
@@ -230,7 +218,7 @@ Tests solver performance characteristics and scaling behavior.
     end
 
     @testset "Convergence Efficiency" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
@@ -241,16 +229,14 @@ Tests solver performance characteristics and scaling behavior.
         contrasts = [1.01, 1.1, 1.5]  # Weak to strong scattering
 
         source = PlaneWaveSource(
-            config,
+            solver,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
 
-        solver = ConvergentBornSolver(config)
-
         for contrast in contrasts
-            phantom = ones(ComplexF64, config.grid_size)
+            phantom = ones(ComplexF64, solver.grid_size)
             phantom[14:18, 14:18, 14:18] .= contrast
 
             set_permittivity!(solver, phantom)

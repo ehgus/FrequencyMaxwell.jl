@@ -11,12 +11,12 @@ using LinearAlgebra
 using LinearSolve: KrylovJL_GMRES, KrylovJL_BICGSTAB
 
 """
-Test configuration for validation tests with small problem sizes for speed.
+Test solver creation for validation tests with small problem sizes for speed.
 """
-function create_test_config(T = Float64; linear_solver = KrylovJL_GMRES())
-    return ConvergentBornConfig(
+function create_test_solver(T = Float64; linear_solver = KrylovJL_GMRES())
+    return ConvergentBornSolver(
         wavelength = T(500e-9),           # 500 nm
-        permittivity_bg = T(1.33^2),      # Water background  
+        permittivity_bg = T(1.33^2),      # Water background
         resolution = (T(50e-9), T(50e-9), T(50e-9)),  # 50 nm isotropic
         grid_size = (32, 32, 16),         # Small grid for fast testing
         boundary_thickness = (T(0.0), T(0.0), T(200e-9)),
@@ -32,9 +32,9 @@ end
 """
 Create test permittivity distribution with known scattering features.
 """
-function create_test_permittivity(config::ConvergentBornConfig{T}) where {T}
-    grid_size = config.grid_size
-    eps_bg = config.permittivity_bg
+function create_test_permittivity(solver::ConvergentBornSolver{T}) where {T}
+    grid_size = solver.grid_size
+    eps_bg = solver.permittivity_bg
     permittivity = fill(Complex{T}(eps_bg), grid_size)
 
     # Add a spherical scatterer in the center
@@ -54,44 +54,40 @@ end
 @testset "LinearSolve.jl Integration Tests" begin
     @testset "Configuration with LinearSolver Objects" begin
         @testset "GMRES Configuration" begin
-            config = create_test_config(; linear_solver = KrylovJL_GMRES())
-            @test isa(config.linear_solver, typeof(KrylovJL_GMRES()))
-            @test config.wavelength ≈ 500e-9
+            solver = create_test_solver(; linear_solver = KrylovJL_GMRES())
+            @test isa(solver.linear_solver, typeof(KrylovJL_GMRES()))
+            @test solver.wavelength ≈ 500e-9
         end
 
         @testset "BiCGSTAB Configuration" begin
-            config = create_test_config(; linear_solver = KrylovJL_BICGSTAB())
-            @test isa(config.linear_solver, typeof(KrylovJL_BICGSTAB()))
+            solver = create_test_solver(; linear_solver = KrylovJL_BICGSTAB())
+            @test isa(solver.linear_solver, typeof(KrylovJL_BICGSTAB()))
         end
 
         @testset "Type Promotion" begin
-            config32 = create_test_config(Float32; linear_solver = KrylovJL_GMRES())
-            @test config32.wavelength isa Float32
-            @test config32.tolerance isa Float32
-            @test isa(config32.linear_solver, typeof(KrylovJL_GMRES()))
+            solver32 = create_test_solver(Float32; linear_solver = KrylovJL_GMRES())
+            @test solver32.wavelength isa Float32
+            @test solver32.tolerance isa Float32
+            @test isa(solver32.linear_solver, typeof(KrylovJL_GMRES()))
         end
     end
 
     @testset "Solver Construction" begin
-        config_gmres = create_test_config(; linear_solver = KrylovJL_GMRES())
-        config_bicgstab = create_test_config(; linear_solver = KrylovJL_BICGSTAB())
+        solver_gmres = create_test_solver(; linear_solver = KrylovJL_GMRES())
+        solver_bicgstab = create_test_solver(; linear_solver = KrylovJL_BICGSTAB())
 
-        solver_gmres = ConvergentBornSolver(config_gmres)
-        solver_bicgstab = ConvergentBornSolver(config_bicgstab)
-
-        @test isa(solver_gmres.config.linear_solver, typeof(KrylovJL_GMRES()))
-        @test isa(solver_bicgstab.config.linear_solver, typeof(KrylovJL_BICGSTAB()))
+        @test isa(solver_gmres.linear_solver, typeof(KrylovJL_GMRES()))
+        @test isa(solver_bicgstab.linear_solver, typeof(KrylovJL_BICGSTAB()))
     end
 
     @testset "Basic Solver Functionality" begin
         @testset "GMRES Solver" begin
-            config = create_test_config(; linear_solver = KrylovJL_GMRES())
-            solver = ConvergentBornSolver(config)
-            permittivity = create_test_permittivity(config)
+            solver = create_test_solver(; linear_solver = KrylovJL_GMRES())
+            permittivity = create_test_permittivity(solver)
 
             # Create simple plane wave source
             source = PlaneWaveSource(
-                wavelength = config.wavelength,
+                wavelength = solver.wavelength,
                 polarization = [1.0, 0.0, 0.0],
                 k_vector = [0.0, 0.0, 1.0],
                 amplitude = 1.0
@@ -102,13 +98,12 @@ end
         end
 
         @testset "BiCGSTAB Solver" begin
-            config = create_test_config(; linear_solver = KrylovJL_BICGSTAB())
-            solver = ConvergentBornSolver(config)
-            permittivity = create_test_permittivity(config)
+            solver = create_test_solver(; linear_solver = KrylovJL_BICGSTAB())
+            permittivity = create_test_permittivity(solver)
 
             # Create simple plane wave source
             source = PlaneWaveSource(
-                wavelength = config.wavelength,
+                wavelength = solver.wavelength,
                 polarization = [1.0, 0.0, 0.0],
                 k_vector = [0.0, 0.0, 1.0],
                 amplitude = 1.0
@@ -124,26 +119,24 @@ end
 
         for algorithm in algorithms
             @testset "Algorithm: $(typeof(algorithm))" begin
-                config = create_test_config(; linear_solver = algorithm)
-                solver = ConvergentBornSolver(config)
+                solver = create_test_solver(; linear_solver = algorithm)
 
-                @test isa(solver.config.linear_solver, typeof(algorithm))
+                @test isa(solver.linear_solver, typeof(algorithm))
 
                 # Test that configuration is valid
-                @test config.wavelength > 0
-                @test config.permittivity_bg > 0
-                @test all(config.resolution .> 0)
+                @test solver.wavelength > 0
+                @test solver.permittivity_bg > 0
+                @test all(solver.resolution .> 0)
             end
         end
     end
 
     @testset "Field Output Validation" begin
-        config = create_test_config(; linear_solver = KrylovJL_GMRES())
-        solver = ConvergentBornSolver(config)
-        permittivity = create_test_permittivity(config)
+        solver = create_test_solver(; linear_solver = KrylovJL_GMRES())
+        permittivity = create_test_permittivity(solver)
 
         source = PlaneWaveSource(
-            wavelength = config.wavelength,
+            wavelength = solver.wavelength,
             polarization = [1.0, 0.0, 0.0],
             k_vector = [0.0, 0.0, 1.0],
             amplitude = 1.0
@@ -152,8 +145,8 @@ end
         E_field, H_field = solve(solver, source, permittivity)
 
         # Test field properties
-        @test size(E_field) == (config.grid_size..., 3)
-        @test size(H_field) == (config.grid_size..., 3)
+        @test size(E_field) == (solver.grid_size..., 3)
+        @test size(H_field) == (solver.grid_size..., 3)
         @test eltype(E_field) <: Complex
         @test eltype(H_field) <: Complex
 

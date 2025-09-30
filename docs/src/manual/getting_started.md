@@ -15,12 +15,11 @@ Pkg.add("https://github.com/ehgus/FrequencyMaxwell.jl.git")
 
 The typical workflow for electromagnetic simulation with FrequencyMaxwell.jl follows these steps:
 
-1. **Configure the solver** with physical and numerical parameters
-2. **Create a solver instance** from the configuration
-3. **Define electromagnetic sources** (plane waves, multiple plane waves)
-4. **Generate or load a material distribution** (permittivity phantom)
-5. **Solve the electromagnetic scattering problem**
-6. **Analyze the resulting fields**
+1. **Create a solver** with integrated configuration
+2. **Define electromagnetic sources** (plane waves, multiple plane waves)
+3. **Generate or load a material distribution** (permittivity phantom)
+4. **Solve the electromagnetic scattering problem**
+5. **Analyze the resulting fields**
 
 ## Your First Simulation
 
@@ -29,8 +28,8 @@ Let's start with a simple scattering simulation of a dielectric bead:
 ```julia
 using FrequencyMaxwell
 
-# Step 1: Configure the solver
-config = ConvergentBornConfig(
+# Step 1: Create solver with integrated configuration
+solver = ConvergentBornSolver(
     wavelength = 500e-9,          # 500 nm wavelength (green light)
     permittivity_bg = 1.33^2,     # Water background (n = 1.33)
     resolution = (50e-9, 50e-9, 50e-9),  # 50 nm voxel size
@@ -38,29 +37,26 @@ config = ConvergentBornConfig(
     tolerance = 1e-6              # Convergence tolerance
 )
 
-# Step 2: Create solver instance
-solver = ConvergentBornSolver(config)
-
-# Step 3: Define electromagnetic source
+# Step 2: Define electromagnetic source
 source = PlaneWaveSource(
-    wavelength = config.wavelength,
+    wavelength = solver.wavelength,
     polarization = [1.0, 0.0, 0.0],  # x-polarized light
     k_vector = [0.0, 0.0, 1.0],      # propagating in +z direction
     amplitude = 1.0,                  # unit amplitude
     phase = 0.0                       # zero phase
 )
 
-# Step 4: Generate material distribution (dielectric bead)
+# Step 3: Generate material distribution (dielectric bead)
 permittivity_phantom = phantom_bead(
-    config.grid_size,     # grid dimensions
+    solver.grid_size,     # grid dimensions
     [1.5^2],              # permittivity of bead (n = 1.5)
     16.0                  # radius in grid points
 )
 
-# Step 5: Solve the electromagnetic problem
+# Step 4: Solve the electromagnetic problem
 E_field, H_field = solve(solver, source, permittivity_phantom)
 
-# Step 6: Analyze results
+# Step 5: Analyze results
 println("Electric field dimensions: ", size(E_field.E))
 println("Magnetic field dimensions: ", size(H_field.H))
 

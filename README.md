@@ -77,8 +77,8 @@ Optional dependencies for extended functionality:
 ```julia
 using FrequencyMaxwell
 
-# Configure the electromagnetic solver
-config = ConvergentBornConfig(
+# Create electromagnetic solver with streamlined API
+solver = ConvergentBornSolver(
     wavelength = 500e-9,          # 500 nm wavelength (green light)
     permittivity_bg = 1.33^2,     # Water background (n=1.33)
     resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
@@ -86,12 +86,9 @@ config = ConvergentBornConfig(
     tolerance = 1e-6              # Convergence tolerance
 )
 
-# Create the electromagnetic solver
-solver = ConvergentBornSolver(config)
-
 # Define incident plane wave source
 source = PlaneWaveSource(
-    wavelength = config.wavelength,
+    wavelength = solver.wavelength,
     polarization = [1.0, 0.0, 0.0],    # X-polarized light
     k_vector = [0.0, 0.0, 1.0],        # Propagating in +Z direction
     amplitude = 1.0                     # 1 V/m amplitude
@@ -99,7 +96,7 @@ source = PlaneWaveSource(
 
 # Generate a spherical bead phantom
 phantom = phantom_bead(
-    config.grid_size,
+    solver.grid_size,
     [1.5^2],                      # Polystyrene bead (n=1.5)
     16.0,                         # Radius in pixels
     num_bead = 1
@@ -109,8 +106,8 @@ phantom = phantom_bead(
 E_field, H_field = solve(solver, source, phantom)
 
 # Analyze results
-fields = ElectromagneticField(E_field, H_field, config.grid_size, 
-                             config.resolution, config.wavelength)
+fields = ElectromagneticField(E_field, H_field, solver.grid_size,
+                             solver.resolution, solver.wavelength)
 
 println("Total field energy: $(field_energy(fields)) J")
 println("Maximum intensity: $(maximum(field_intensity(fields)))")
@@ -140,14 +137,8 @@ println("Gradient with respect to permittivity: $gradient")
 
 ### Core Types
 
-#### Configuration Types
-- **`ConvergentBornConfig`**: Complete configuration for electromagnetic simulation
-- **`domain_size(config)`**: Calculate physical domain dimensions
-- **`grid_spacing(config)`**: Get spatial resolution
-- **`wavenumber_background(config)`**: Background medium wavenumber
-
 #### Solver Types
-- **`ConvergentBornSolver`**: Main electromagnetic solver using convergent Born method
+- **`ConvergentBornSolver`**: Main electromagnetic solver
 - **`solve(solver, source, phantom)`**: Solve electromagnetic scattering problem
 
 #### Source Types

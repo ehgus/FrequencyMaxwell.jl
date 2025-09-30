@@ -7,7 +7,7 @@ Tests complete forward solver workflows including realistic scattering problems.
     @testset "SiO2 Bead in Water - Complete Workflow" begin
         # Replicate the original example with smaller grid for testing
         radius_um = 0.5  # 0.5 micron radius
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 532e-9,
             permittivity_bg = 1.333^2,  # Water
             resolution = (50e-9, 50e-9, 50e-9),  # 50 nm resolution
@@ -18,36 +18,35 @@ Tests complete forward solver workflows including realistic scattering problems.
 
         # Create SiO2 bead phantom
         permittivity_SiO2 = 1.4607^2
-        radius_pixels = round(Int, radius_um * 1e-6 / config.resolution[3])
+        radius_pixels = round(Int, radius_um * 1e-6 / solver.resolution[3])
         phantom = create_spherical_phantom(
-            config.grid_size,
-            config.permittivity_bg,
+            solver.grid_size,
+            solver.permittivity_bg,
             permittivity_SiO2,
             radius_pixels
         )
 
         # Create plane wave source
         source = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
 
-        # Solve forward problem
-        solver = ConvergentBornSolver(config)
+        # Set permittivity and solve forward problem
         set_permittivity!(solver, phantom)
 
         # Test solver state after permittivity setting
         @test !isnothing(solver.permittivity)
-        @test size(solver.permittivity) == config.grid_size
+        @test size(solver.permittivity) == solver.grid_size
 
         # Solve with limited Born iterations for testing
         set_Born_max!(solver, 10)  # Reduced from default for speed
         E_field, H_field = solve(solver, [source])
 
-        @test size(E_field) == (config.grid_size..., 3, 1)  # Last dimension for sources
-        @test size(H_field) == (config.grid_size..., 3, 1)
+        @test size(E_field) == (solver.grid_size..., 3, 1)  # Last dimension for sources
+        @test size(H_field) == (solver.grid_size..., 3, 1)
 
         # Test field properties
         @test !any(isnan.(E_field))
@@ -64,8 +63,8 @@ Tests complete forward solver workflows including realistic scattering problems.
 
         # Test that scattering enhances/reduces intensity in different regions
         background_intensity = intensity[1, 1, 1]  # Far from bead
-        center_intensity = intensity[div(config.grid_size[1], 2) + 1, div(
-            config.grid_size[2], 2) + 1, div(config.grid_size[3], 2) + 1]
+        center_intensity = intensity[div(solver.grid_size[1], 2) + 1, div(
+            solver.grid_size[2], 2) + 1, div(solver.grid_size[3], 2) + 1]
 
         @test background_intensity > 0
         @test center_intensity != background_intensity  # Scattering effect
@@ -73,7 +72,7 @@ Tests complete forward solver workflows including realistic scattering problems.
 
     @testset "Convergence Properties" begin
         # Test Born series convergence with small perturbation
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
@@ -81,17 +80,15 @@ Tests complete forward solver workflows including realistic scattering problems.
         )
 
         # Small perturbation for good convergence
-        phantom = ones(ComplexF64, config.grid_size) * config.permittivity_bg
+        phantom = ones(ComplexF64, solver.grid_size) * solver.permittivity_bg
         phantom[16:18, 16:18, 16:18] .= 1.01  # 1% permittivity increase
 
         source = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
-
-        solver = ConvergentBornSolver(config)
         set_permittivity!(solver, phantom)
 
         # Test different Born iteration counts
@@ -110,7 +107,7 @@ Tests complete forward solver workflows including realistic scattering problems.
     end
 
     @testset "Material Contrast Effects" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 633e-9,
             permittivity_bg = 1.33^2,  # Water
             resolution = (100e-9, 100e-9, 100e-9),
@@ -118,13 +115,11 @@ Tests complete forward solver workflows including realistic scattering problems.
         )
 
         source = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
-
-        solver = ConvergentBornSolver(config)
         set_Born_max!(solver, 5)
 
         # Test different material contrasts
@@ -132,8 +127,8 @@ Tests complete forward solver workflows including realistic scattering problems.
         scattering_strengths = []
 
         for contrast in contrasts
-            phantom = ones(ComplexF64, config.grid_size) * config.permittivity_bg
-            phantom[14:18, 14:18, 14:18] .= config.permittivity_bg * contrast
+            phantom = ones(ComplexF64, solver.grid_size) * solver.permittivity_bg
+            phantom[14:18, 14:18, 14:18] .= solver.permittivity_bg * contrast
 
             set_permittivity!(solver, phantom)
             E_field, _ = solve(solver, [source])
@@ -151,7 +146,7 @@ Tests complete forward solver workflows including realistic scattering problems.
     end
 
     @testset "Lossy Materials" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
@@ -159,17 +154,15 @@ Tests complete forward solver workflows including realistic scattering problems.
         )
 
         # Test with lossy material (complex permittivity)
-        phantom = ones(ComplexF64, config.grid_size)
+        phantom = ones(ComplexF64, solver.grid_size)
         phantom[12:20, 12:20, 12:20] .= 2.0 + 0.1im  # Lossy material
 
         source = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
-
-        solver = ConvergentBornSolver(config)
         set_permittivity!(solver, phantom)
         set_Born_max!(solver, 5)
 
@@ -183,7 +176,7 @@ Tests complete forward solver workflows including realistic scattering problems.
         intensity = sum(abs2.(E_field[:, :, :, :, 1]), dims = 4)
 
         # Compare with lossless case
-        phantom_lossless = ones(ComplexF64, config.grid_size)
+        phantom_lossless = ones(ComplexF64, solver.grid_size)
         phantom_lossless[12:20, 12:20, 12:20] .= 2.0  # Same real part
 
         set_permittivity!(solver, phantom_lossless)
@@ -197,7 +190,7 @@ Tests complete forward solver workflows including realistic scattering problems.
     end
 
     @testset "Field Boundary Conditions" begin
-        config = ConvergentBornConfig(
+        solver = ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
@@ -207,17 +200,15 @@ Tests complete forward solver workflows including realistic scattering problems.
         )
 
         # Simple scatterer
-        phantom = ones(ComplexF64, config.grid_size)
+        phantom = ones(ComplexF64, solver.grid_size)
         phantom[15:17, 15:17, 15:17] .= 1.5
 
         source = PlaneWaveSource(
-            config,
+            solver.wavelength,
             polarization = (1.0, 0.0, 0.0),
             direction = 3,
             k_transverse = (0.0, 0.0)
         )
-
-        solver = ConvergentBornSolver(config)
         set_permittivity!(solver, phantom)
         set_Born_max!(solver, 3)
 
