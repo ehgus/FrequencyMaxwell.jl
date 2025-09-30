@@ -514,8 +514,7 @@ domain, enabling applications like beam splitting, interference patterns, and co
 - `permittivity::AbstractArray{T, 3}`: 3D permittivity distribution
 
 # Returns
-- `Efield::AbstractArray{Complex{T}, 4}`: Electric field (last dim = 3 for components)
-- `Hfield::AbstractArray{Complex{T}, 4}`: Magnetic field (last dim = 3 for components)
+- `EMfield::ElectromagneticField`: Electromagnetic field structure containing E and H fields
 
 # Algorithm
 The method solves the electromagnetic scattering equation:
@@ -533,11 +532,11 @@ For multiple sources, incident fields are coherently superposed: E_incident = Σ
 # Examples
 ```julia
 # Single source
-Efield, Hfield = solve(solver, source, permittivity)
+EMfield = solve(solver, source, permittivity)
 
 # Multi-source (coherent interference)
 sources = [source1, source2, source3]
-Efield, Hfield = solve(solver, sources, permittivity)
+EMfield = solve(solver, sources, permittivity)
 ```
 """
 function LinearSolve.solve(
@@ -577,10 +576,12 @@ function LinearSolve.solve(
     H_scattered = to_host(H_scattered_device)
 
     # Add incident field to get total field and crop to ROI
-    E_total = crop_to_ROI(E_scattered + E_incident, solver)
-    H_total = crop_to_ROI(H_scattered + H_incident, solver)
+    Efield = crop_to_ROI(E_scattered + E_incident, solver)
+    Hfield = crop_to_ROI(H_scattered + H_incident, solver)
 
-    return E_total, H_total
+    # Wrap in ElectromagneticField structure
+    return ElectromagneticField(Efield, Hfield, solver.grid_size,
+                                solver.resolution, solver.wavelength)
 end
 
 """

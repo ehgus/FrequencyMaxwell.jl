@@ -73,11 +73,7 @@ function basic_scattering_example()
 
     # Step 4: Solve the electromagnetic scattering problem
     println("\\nSolving electromagnetic scattering...")
-    Efield, Hfield = solve(solver, source, phantom)
-
-    # Wrap in ElectromagneticField structure
-    EMfield = ElectromagneticField(Efield, Hfield, solver.grid_size,
-                                   solver.resolution, solver.wavelength)
+    EMfield = solve(solver, source, phantom)
 
     println("Solution completed successfully!")
     println("Field properties:")
@@ -186,11 +182,7 @@ This creates a 3D array with:
 ### 5. Electromagnetic Solving
 
 ```julia
-Efield, Hfield = solve(solver, source, phantom)
-
-# Wrap in ElectromagneticField structure
-EMfield = ElectromagneticField(Efield, Hfield, solver.grid_size,
-                               solver.resolution, solver.wavelength)
+EMfield = solve(solver, source, phantom)
 ```
 
 The solver:

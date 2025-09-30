@@ -80,11 +80,7 @@ function main()
     println("\nSolving electromagnetic scattering...")
     println("Note: This is a placeholder implementation")
 
-    Efield, Hfield = solve(solver, source, phantom)
-
-    # Wrap fields in structured container
-    EMfield = ElectromagneticField(Efield, Hfield, solver.grid_size,
-        solver.resolution, solver.wavelength)
+    EMfield = solve(solver, source, phantom)
 
     println("Solution completed successfully!")
     println("Field properties:")

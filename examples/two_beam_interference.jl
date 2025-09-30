@@ -103,15 +103,15 @@ function test_two_beam_interference_homogeneous()
     # Solve multi-source electromagnetic problem
     println("\n--- Solving Multi-Source CBS Problem ---")
     t_start = time()
-    Efield, Hfield = solve(solver, sources, permittivity)
+    EMfield = solve(solver, sources, permittivity)
     t_solve = time() - t_start
 
     println("✓ Multi-source solve completed in $(t_solve) seconds")
-    println("  E-field size: $(size(Efield))")
-    println("  H-field size: $(size(Hfield))")
+    println("  E-field size: $(size(EMfield.E))")
+    println("  H-field size: $(size(EMfield.H))")
 
     # Analyze interference pattern
-    intensity = sum(abs2.(Efield), dims = 4)[:, :, :, 1]
+    intensity = sum(abs2.(EMfield.E), dims = 4)[:, :, :, 1]
 
     println("\n--- Analyzing Interference Pattern ---")
 
@@ -162,8 +162,8 @@ function test_two_beam_interference_homogeneous()
     end
 
     # Check field magnitudes are reasonable
-    E_max = maximum(abs.(Efield))
-    H_max = maximum(abs.(Hfield))
+    E_max = maximum(abs.(EMfield.E))
+    H_max = maximum(abs.(EMfield.H))
 
     if E_max < 1e-3 || E_max > 1e3
         println("❌ WARNING: E-field magnitude $(E_max) seems unrealistic")
@@ -183,7 +183,7 @@ function test_two_beam_interference_homogeneous()
         println("⚠️  PARTIAL: Some validation checks failed, review above warnings")
     end
 
-    return Efield, Hfield, intensity, success
+    return EMfield, intensity, success
 end
 
 """
@@ -235,8 +235,8 @@ end
 # Run the test if this file is executed directly
 if abspath(PROGRAM_FILE) == @__FILE__
     try
-        Efield, Hfield, intensity, success = test_two_beam_interference_homogeneous()
-        heatmap(angle.(Efield[div(size(Efield, 1), 2), :, :, 1]))
+        EMfield, intensity, success = test_two_beam_interference_homogeneous()
+        heatmap(angle.(EMfield.E[div(size(EMfield.E, 1), 2), :, :, 1]))
         heatmap(intensity[div(size(intensity, 1), 2), :, :])
         exit(success ? 0 : 1)
     catch e

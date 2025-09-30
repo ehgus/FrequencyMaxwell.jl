@@ -106,14 +106,11 @@ phantom = phantom_bead(
 )
 
 # Solve the electromagnetic scattering problem
-Efield, Hfield = solve(solver, source, phantom)
+EMfield = solve(solver, source, phantom)
 
 # Analyze results
-fields = ElectromagneticField(Efield, Hfield, solver.grid_size,
-                             solver.resolution, solver.wavelength)
-
-println("Total field energy: $(field_energy(fields)) J")
-println("Maximum intensity: $(maximum(field_intensity(fields)))")
+println("Total field energy: $(field_energy(EMfield)) J")
+println("Maximum intensity: $(maximum(field_intensity(EMfield)))")
 ```
 
 ### GPU-Accelerated Simulation
@@ -138,7 +135,7 @@ source = PlaneWaveSource(
 )
 
 phantom = phantom_bead(solver.grid_size, [1.5^2], 32.0)
-Efield, Hfield = solve(solver, source, phantom)
+EMfield = solve(solver, source, phantom)
 
 # Results are automatically transferred back to host
 ```

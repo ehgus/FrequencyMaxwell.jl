@@ -39,7 +39,7 @@ source = PlaneWaveSource(
 )
 
 # Solve electromagnetic problem
-Efield, Hfield = solve(solver, source, permittivity_distribution)
+EMfield = solve(solver, source, permittivity_distribution)
 ```
 """
 module FrequencyMaxwell
