@@ -78,11 +78,6 @@ solver = ConvergentBornSolver(
 
 #### Boundary Configuration
 
-**`use_abbe_sine`** (optional, default: `true`)
-- **Type**: `Bool`
-- **Description**: Whether to use Abbe sine condition for illumination
-- **Recommendation**: Keep `true` for most applications
-
 **`boundary_thickness`** (optional, default: `(0.0, 0.0, 0.0)`)
 - **Type**: `NTuple{3, T}`
 - **Description**: PML boundary layer thickness in each direction

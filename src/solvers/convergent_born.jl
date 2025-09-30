@@ -23,7 +23,6 @@ for streamlined usage while maintaining high performance and AD compatibility.
 - `permittivity_bg::T`: Background relative permittivity
 - `resolution::NTuple{3, T}`: Spatial resolution (dx, dy, dz) in meters
 - `grid_size::NTuple{3, Int}`: Number of grid points (Nx, Ny, Nz)
-- `use_abbe_sine::Bool`: Whether to use Abbe sine condition for illumination
 - `boundary_thickness::NTuple{3, T}`: PML boundary layer thickness in each direction
 - `field_attenuation::NTuple{3, T}`: Field attenuation layer thickness in each direction
 - `field_attenuation_sharpness::T`: Sharpness factor for field attenuation (0-1)
@@ -73,7 +72,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     permittivity_bg::T
     resolution::NTuple{3, T}
     grid_size::NTuple{3, Int}
-    use_abbe_sine::Bool
     boundary_thickness::NTuple{3, T}
     field_attenuation::NTuple{3, T}
     field_attenuation_sharpness::T
@@ -104,7 +102,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             permittivity_bg::T,
             resolution::NTuple{3, T},
             grid_size::NTuple{3, Int},
-            use_abbe_sine::Bool,
             boundary_thickness::NTuple{3, T},
             field_attenuation::NTuple{3, T},
             field_attenuation_sharpness::T,
@@ -137,7 +134,7 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
 
         new{T}(
             # Configuration fields
-            wavelength, permittivity_bg, resolution, grid_size, use_abbe_sine,
+            wavelength, permittivity_bg, resolution, grid_size,
             boundary_thickness, field_attenuation, field_attenuation_sharpness,
             periodic_boundary, iterations_max, tolerance, linear_solver, preconditioner,
             # Solver state fields
@@ -275,7 +272,6 @@ direct access to all configuration parameters without intermediate objects.
 - `resolution::NTuple{3, <:Real}`: Spatial resolution (dx, dy, dz) in meters
 - `grid_size::NTuple{3, Int}`: Number of grid points (Nx, Ny, Nz)
 - `device::Symbol = :cpu`: Device backend (:cpu, :cuda, :amdgpu, :metal, :oneapi)
-- `use_abbe_sine::Bool = true`: Whether to use Abbe sine condition for illumination
 - `boundary_thickness::NTuple{3, <:Real} = (0.0, 0.0, 0.0)`: PML boundary layer thickness
 - `field_attenuation::NTuple{3, <:Real} = (0.0, 0.0, 0.0)`: Field attenuation layer thickness
 - `field_attenuation_sharpness::Real = 1.0`: Sharpness factor for field attenuation (0-1)
@@ -323,7 +319,6 @@ function ConvergentBornSolver(;
         resolution::NTuple{3, <:Real},
         grid_size::NTuple{3, Int},
         device::Symbol = :cpu,
-        use_abbe_sine::Bool = true,
         boundary_thickness::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
         field_attenuation::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
         field_attenuation_sharpness::Real = 1.0,
@@ -345,7 +340,7 @@ function ConvergentBornSolver(;
     # Create and return solver using the internal constructor
     return ConvergentBornSolver{T}(
         T(wavelength), T(permittivity_bg),
-        T.(resolution), grid_size, use_abbe_sine,
+        T.(resolution), grid_size,
         T.(boundary_thickness), T.(field_attenuation), T(field_attenuation_sharpness),
         periodic_boundary, iterations_max, T(tolerance),
         linear_solver, preconditioner, backend

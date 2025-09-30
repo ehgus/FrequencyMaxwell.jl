@@ -25,7 +25,6 @@ Tests fundamental solver initialization, configuration, and basic operations.
         @test solver.grid_size == (64, 64, 32)
 
         # Test default values
-        @test solver.use_abbe_sine == true
         @test solver.periodic_boundary == (true, true, false)
         @test solver.tolerance ≈ 1e-6
         @test solver.iterations_max == -1
