@@ -417,8 +417,8 @@ end
 
 Linear operator representing (1-G*V*) for the Convergent Born Series reformulation.
 
-The CBS iteration `Field_{n+1} = Field_0 + A * Field_n` can be reformulated as
-a linear system `(1-G*V*) * Field = Field_0` where:
+The CBS iteration `Efield_{n+1} = Efield_0 + A * Efield_n` can be reformulated as
+a linear system `(1-G*V*) * Efield = Efield_0` where:
 - G*V* = (G + G_flip)/2 * V
 - V is the potential (permittivity contrast)
 - G, G_flip are dyadic Green's functions
@@ -514,8 +514,8 @@ domain, enabling applications like beam splitting, interference patterns, and co
 - `permittivity::AbstractArray{T, 3}`: 3D permittivity distribution
 
 # Returns
-- `E_field::AbstractArray{Complex{T}, 4}`: Electric field (last dim = 3 for components)
-- `H_field::AbstractArray{Complex{T}, 4}`: Magnetic field (last dim = 3 for components)
+- `Efield::AbstractArray{Complex{T}, 4}`: Electric field (last dim = 3 for components)
+- `Hfield::AbstractArray{Complex{T}, 4}`: Magnetic field (last dim = 3 for components)
 
 # Algorithm
 The method solves the electromagnetic scattering equation:
@@ -533,11 +533,11 @@ For multiple sources, incident fields are coherently superposed: E_incident = Σ
 # Examples
 ```julia
 # Single source
-E_field, H_field = solve(solver, source, permittivity)
+Efield, Hfield = solve(solver, source, permittivity)
 
 # Multi-source (coherent interference)
 sources = [source1, source2, source3]
-E_field, H_field = solve(solver, sources, permittivity)
+Efield, Hfield = solve(solver, sources, permittivity)
 ```
 """
 function LinearSolve.solve(
@@ -863,11 +863,11 @@ function _fill_plane_wave_fields!(
 end
 
 """
-    _solve_cbs_scattering(solver, source) -> (E_field, H_field)
+    _solve_cbs_scattering(solver, source) -> (Efield, Hfield)
 
 Solve the electromagnetic scattering problem using LinearSolve.jl CBS implementation.
 
-This function reformulates the Convergent Born Series as a linear system (I - A) * Field = Field_0
+This function reformulates the Convergent Born Series as a linear system (I - A) * Efield = Efield_0
 and leverages the user-configured LinearSolver algorithm for efficient solution.
 
 # Mathematical Foundation
@@ -886,7 +886,7 @@ and leverages the user-configured LinearSolver algorithm for efficient solution.
 - `source::AbstractArray{Complex{T}, 4}`: Incident source field array (nx, ny, nz, 3)
 
 # Returns
-- `(E_field, H_field)`: Tuple of electric and magnetic field arrays
+- `(Efield, Hfield)`: Tuple of electric and magnetic field arrays
 """
 function _solve_cbs_scattering(
         solver::ConvergentBornSolver{T},
@@ -945,7 +945,7 @@ function _solve_cbs_scattering(
         end
 
         # Reshape solution back to field array
-        Field = reshape(sol.u, size_field)
+        Efield = reshape(sol.u, size_field)
 
         # Update solver statistics if available
         if hasfield(typeof(sol), :iters)
@@ -957,13 +957,13 @@ function _solve_cbs_scattering(
     end
 
     # Compute magnetic field using same method as iterative version
-    Hfield = _compute_magnetic_field(solver, Field)
+    Hfield = _compute_magnetic_field(solver, Efield)
 
-    return Field, Hfield
+    return Efield, Hfield
 end
 
 """
-    _compute_magnetic_field(solver, E_field) -> AbstractArray
+    _compute_magnetic_field(solver, Efield) -> AbstractArray
 
 Compute magnetic field from electric field using Maxwell's equation:
 H = -i/k₀ * (n₀/Z₀) * ∇ × E
@@ -972,7 +972,7 @@ where k₀ is the free-space wave number and Z₀ = 377 Ω is the impedance.
 """
 function _compute_magnetic_field(
         solver::ConvergentBornSolver{T},
-        E_field::AbstractArray{Complex{T}, 4}
+        Efield::AbstractArray{Complex{T}, 4}
 ) where {T <: AbstractFloat}
 
     # Create curl operator for field with padding
@@ -980,7 +980,7 @@ function _compute_magnetic_field(
     curl_op = Curl(array_type, T, size(solver.potential), solver.resolution)
 
     # Compute curl of E field
-    Hfield = conv(curl_op, E_field)
+    Hfield = conv(curl_op, Efield)
 
     # Apply scaling: H = -i * λ/(2π * Z₀) * ∇ × E
     scaling_factor = Complex{T}(0, -1) * solver.wavelength / (T(2π) * T(377))

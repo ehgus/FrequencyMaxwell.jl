@@ -27,18 +27,18 @@ Tests electromagnetic source generation and field initialization.
         @test source.k_vector[3] ≈ 1.0  # z-direction
 
         # Test field generation
-        fields = generate_incident_fields(source, solver)
-        E_field = fields.E
-        H_field = fields.H
+        EMfield = generate_incident_fields(source, solver)
+        Efield = EMfield.E
+        Hfield = EMfield.H
 
-        @test size(E_field) == (solver.grid_size..., 3)
-        @test size(H_field) == (solver.grid_size..., 3)
+        @test size(Efield) == (solver.grid_size..., 3)
+        @test size(Hfield) == (solver.grid_size..., 3)
 
         # Test field properties
-        @test !any(isnan.(E_field))
-        @test !any(isnan.(H_field))
-        @test !any(isinf.(E_field))
-        @test !any(isinf.(H_field))
+        @test !any(isnan.(Efield))
+        @test !any(isnan.(Hfield))
+        @test !any(isinf.(Efield))
+        @test !any(isinf.(Hfield))
     end
 
     @testset "Source Polarization" begin
@@ -55,8 +55,8 @@ Tests electromagnetic source generation and field initialization.
             polarization = [1.0, 0.0, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
-        fields_x = generate_incident_fields(source_x, solver)
-        E_x, H_x = fields_x.E, fields_x.H
+        EMfield_x = generate_incident_fields(source_x, solver)
+        E_x, H_x = EMfield_x.E, EMfield_x.H
 
         # Test y-polarization
         source_y = PlaneWaveSource(
@@ -64,8 +64,8 @@ Tests electromagnetic source generation and field initialization.
             polarization = [0.0, 1.0, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
-        fields_y = generate_incident_fields(source_y, solver)
-        E_y, H_y = fields_y.E, fields_y.H
+        EMfield_y = generate_incident_fields(source_y, solver)
+        E_y, H_y = EMfield_y.E, EMfield_y.H
 
         # Test circular polarization
         source_circ = PlaneWaveSource(
@@ -73,8 +73,8 @@ Tests electromagnetic source generation and field initialization.
             polarization = [1.0, 1.0im, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
-        fields_circ = generate_incident_fields(source_circ, solver)
-        E_circ, H_circ = fields_circ.E, fields_circ.H
+        EMfield_circ = generate_incident_fields(source_circ, solver)
+        E_circ, H_circ = EMfield_circ.E, EMfield_circ.H
 
         # Verify orthogonality for linear polarizations
         @test sum(abs, (E_x .* conj(E_y))) ≈ 0.0  # Should be orthogonal
@@ -101,18 +101,18 @@ Tests electromagnetic source generation and field initialization.
                 k_vector = k_normalized
             )
 
-            fields = generate_incident_fields(source, solver)
-            E_field, H_field = fields.E, fields.H
+            EMfield = generate_incident_fields(source, solver)
+            Efield, Hfield = EMfield.E, EMfield.H
 
             # Test that fields are generated properly
-            @test size(E_field) == (solver.grid_size..., 3)
-            @test size(H_field) == (solver.grid_size..., 3)
+            @test size(Efield) == (solver.grid_size..., 3)
+            @test size(Hfield) == (solver.grid_size..., 3)
 
             # Test that non-normal incidence creates expected spatial patterns
             if k_normalized != [0.0, 0.0, 1.0]
                 # Should have spatial variation due to oblique incidence
-                center_field = E_field[div(end, 2), div(end, 2), div(end, 2), 1]
-                edge_field = E_field[1, 1, div(end, 2), 1]
+                center_field = Efield[div(end, 2), div(end, 2), div(end, 2), 1]
+                edge_field = Efield[1, 1, div(end, 2), 1]
                 @test abs(center_field - edge_field) > 0.0  # Should have spatial variation
             end
         end
@@ -132,15 +132,15 @@ Tests electromagnetic source generation and field initialization.
             k_vector = [0.0, 0.0, 1.0]
         )
 
-        fields = generate_incident_fields(source, solver)
-        E_field, H_field = fields.E, fields.H
+        EMfield = generate_incident_fields(source, solver)
+        Efield, Hfield = EMfield.E, EMfield.H
 
         # Test Maxwell's equations in source region
         # For plane wave: ∇ × E = -iωμH, ∇ × H = iωεE
 
         # Test field magnitudes are reasonable
-        E_magnitude = sqrt.(sum(abs2.(E_field), dims = 4))
-        H_magnitude = sqrt.(sum(abs2.(H_field), dims = 4))
+        E_magnitude = sqrt.(sum(abs2.(Efield), dims = 4))
+        H_magnitude = sqrt.(sum(abs2.(Hfield), dims = 4))
 
         @test maximum(E_magnitude) > 0
         @test maximum(H_magnitude) > 0
@@ -152,8 +152,8 @@ Tests electromagnetic source generation and field initialization.
         Z_medium = Z0 / n_bg
 
         center = div.(solver.grid_size, 2) .+ 1
-        E_center_mag = abs(E_field[center..., 1])
-        H_center_mag = abs(H_field[center..., 2])  # H_y for E_x
+        E_center_mag = abs(Efield[center..., 1])
+        H_center_mag = abs(Hfield[center..., 2])  # H_y for E_x
 
         if H_center_mag > 0
             impedance_ratio = E_center_mag / H_center_mag
@@ -178,10 +178,10 @@ Tests electromagnetic source generation and field initialization.
         ]
 
         # Test that individual sources work
-        fields1 = generate_incident_fields(sources[1], solver)
-        fields2 = generate_incident_fields(sources[2], solver)
-        E1, H1 = fields1.E, fields1.H
-        E2, H2 = fields2.E, fields2.H
+        EMfield1 = generate_incident_fields(sources[1], solver)
+        EMfield2 = generate_incident_fields(sources[2], solver)
+        E1, H1 = EMfield1.E, EMfield1.H
+        E2, H2 = EMfield2.E, EMfield2.H
 
         # Manual superposition for testing
         E_total = E1 + E2
@@ -199,56 +199,56 @@ end
 @testset "ElectromagneticField Structure" begin
     @testset "Field Construction" begin
         # Test basic field construction with correct constructor
-        E_data = rand(ComplexF64, 32, 32, 16, 3)  # Grid + 3 components
-        H_data = rand(ComplexF64, 32, 32, 16, 3)  # Grid + 3 components
+        Efield = rand(ComplexF64, 32, 32, 16, 3)  # Grid + 3 components
+        Hfield = rand(ComplexF64, 32, 32, 16, 3)  # Grid + 3 components
         grid_size = (32, 32, 16)
         resolution = (100e-9, 100e-9, 200e-9)
         wavelength = 500e-9
 
-        fields = ElectromagneticField(E_data, H_data, grid_size, resolution, wavelength)
+        EMfield = ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
 
-        @test size(fields.E) == (32, 32, 16, 3)
-        @test size(fields.H) == (32, 32, 16, 3)
-        @test fields.grid_size == grid_size
-        @test fields.resolution == resolution
-        @test fields.wavelength ≈ wavelength
+        @test size(EMfield.E) == (32, 32, 16, 3)
+        @test size(EMfield.H) == (32, 32, 16, 3)
+        @test EMfield.grid_size == grid_size
+        @test EMfield.resolution == resolution
+        @test EMfield.wavelength ≈ wavelength
     end
 
     @testset "Field Utilities" begin
         # Create test fields with correct constructor
-        E_data = ones(ComplexF64, 16, 16, 8, 3) * 0.1
-        H_data = ones(ComplexF64, 16, 16, 8, 3) * 0.01
+        Efield = ones(ComplexF64, 16, 16, 8, 3) * 0.1
+        Hfield = ones(ComplexF64, 16, 16, 8, 3) * 0.01
         grid_size = (16, 16, 8)
         resolution = (50e-9, 50e-9, 100e-9)
         wavelength = 633e-9
 
-        fields = ElectromagneticField(E_data, H_data, grid_size, resolution, wavelength)
+        EMfield = ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
 
         # Test energy calculation
-        energy = field_energy(fields)
+        energy = field_energy(EMfield)
         @test energy > 0
         @test isfinite(energy)
 
         # Test intensity calculation
-        intensity = field_intensity(fields)
+        intensity = field_intensity(EMfield)
         @test size(intensity) == (16, 16, 8)
         @test all(intensity .≥ 0)
 
         # Test Poynting vector
-        S = poynting_vector(fields)
+        S = poynting_vector(EMfield)
         @test size(S) == (16, 16, 8, 3)
     end
 
     @testset "Field Domain Properties" begin
-        E_data = rand(ComplexF64, 20, 30, 10, 3)
-        H_data = rand(ComplexF64, 20, 30, 10, 3)
+        Efield = rand(ComplexF64, 20, 30, 10, 3)
+        Hfield = rand(ComplexF64, 20, 30, 10, 3)
         grid_size = (20, 30, 10)
         resolution = (25e-9, 40e-9, 80e-9)
         wavelength = 500e-9
 
-        fields = ElectromagneticField(E_data, H_data, grid_size, resolution, wavelength)
+        EMfield = ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
 
-        domain = domain_size(fields)
+        domain = domain_size(EMfield)
         @test domain[1] ≈ 20 * 25e-9
         @test domain[2] ≈ 30 * 40e-9
         @test domain[3] ≈ 10 * 80e-9

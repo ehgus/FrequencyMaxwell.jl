@@ -73,18 +73,22 @@ function basic_scattering_example()
 
     # Step 4: Solve the electromagnetic scattering problem
     println("\\nSolving electromagnetic scattering...")
-    E_field, H_field = solve(solver, source, phantom)
+    Efield, Hfield = solve(solver, source, phantom)
+
+    # Wrap in ElectromagneticField structure
+    EMfield = ElectromagneticField(Efield, Hfield, solver.grid_size,
+                                   solver.resolution, solver.wavelength)
 
     println("Solution completed successfully!")
     println("Field properties:")
-    println("  Electric field size: $(size(E_field.E))")
-    println("  Magnetic field size: $(size(H_field.H))")
+    println("  Electric field size: $(size(EMfield.E))")
+    println("  Magnetic field size: $(size(EMfield.H))")
 
     # Step 5: Analyze results
     println("\\nAnalyzing results...")
 
     # Calculate field intensity
-    intensity = field_intensity(E_field)
+    intensity = field_intensity(EMfield)
     max_intensity = maximum(intensity)
     mean_intensity = sum(intensity) / length(intensity)
     enhancement = max_intensity / 1.0  # Relative to incident intensity
@@ -94,17 +98,13 @@ function basic_scattering_example()
     println("  Enhancement factor: $(round(enhancement, digits=2))")
 
     # Calculate total field energy
-    E_energy = field_energy(E_field)
-    H_energy = field_energy(H_field)
-    total_energy = E_energy + H_energy
+    total_energy = field_energy(EMfield)
 
-    println("  Electric field energy: $(E_energy) J")
-    println("  Magnetic field energy: $(H_energy) J")
     println("  Total field energy: $(total_energy) J")
 
     # Extract central plane for analysis
     z_center = div(config.grid_size[3], 2)
-    central_plane = extract_plane(E_field, 3, z_center)
+    central_plane = extract_plane(EMfield, 3, z_center)
     plane_intensity = field_intensity(central_plane)
 
     println("Central plane analysis:")
@@ -112,11 +112,11 @@ function basic_scattering_example()
     println("  Plane mean intensity: $(round(sum(plane_intensity)/length(plane_intensity), digits=4))")
 
     println("\\nExample completed successfully!")
-    return E_field, H_field, phantom
+    return EMfield, phantom
 end
 
 # Run the example
-E_field, H_field, phantom = basic_scattering_example()
+EMfield, phantom = basic_scattering_example()
 ```
 
 ## Step-by-Step Explanation
@@ -186,7 +186,11 @@ This creates a 3D array with:
 ### 5. Electromagnetic Solving
 
 ```julia
-E_field, H_field = solve(solver, source, phantom)
+Efield, Hfield = solve(solver, source, phantom)
+
+# Wrap in ElectromagneticField structure
+EMfield = ElectromagneticField(Efield, Hfield, solver.grid_size,
+                               solver.resolution, solver.wavelength)
 ```
 
 The solver:
@@ -197,17 +201,17 @@ The solver:
 
 ### 6. Results Analysis
 
-The solve returns `ElectromagneticField` objects containing:
+The `ElectromagneticField` structure contains:
 
 ```julia
-# Field arrays with dimensions (3, nx, ny, nz)
-E_field.E  # Electric field vector components
-H_field.H  # Magnetic field vector components
+# Field arrays with dimensions (nx, ny, nz, 3)
+EMfield.E  # Electric field vector components
+EMfield.H  # Magnetic field vector components
 
 # Analysis functions
-intensity = field_intensity(E_field)      # |E|² intensity
-energy = field_energy(E_field)            # ∫ |E|² dV
-poynting = poynting_vector(E_field, H_field)  # Power flow
+intensity = field_intensity(EMfield)      # |E|² intensity
+energy = field_energy(EMfield)            # ∫ |E|² dV
+poynting = poynting_vector(EMfield)       # Power flow
 ```
 
 ## Physical Interpretation
@@ -349,7 +353,7 @@ Check results for physical consistency:
 ```julia
 # Verify energy conservation
 incident_power = source_power(source)
-scattered_power = field_energy(E_field) - incident_power
+scattered_power = field_energy(EMfield) - incident_power
 absorption = # ... calculate if materials are lossy
 
 println("Power balance check:")

@@ -21,7 +21,7 @@ power = source_power(source)
 is_valid = validate_source(source)
 
 # Generate incident fields on a grid
-E_field, H_field = generate_incident_fields(source, config)
+Efield, Hfield = generate_incident_fields(source, config)
 ```
 
 This interface enables:
@@ -243,7 +243,7 @@ source2 = PlaneWaveSource(
 )
 
 # Solve with both sources
-E_field, H_field = solve(solver, [source1, source2], phantom)
+Efield, Hfield = solve(solver, [source1, source2], phantom)
 ```
 
 ### Polarization Control
@@ -265,7 +265,7 @@ source_y = PlaneWaveSource(
 )
 
 # Results in right circular polarization
-E_field, H_field = solve(solver, [source_x, source_y], phantom)
+Efield, Hfield = solve(solver, [source_x, source_y], phantom)
 ```
 
 ### Beam Shaping
@@ -287,7 +287,7 @@ for angle in -10:2:10  # ±10° in 2° steps
 end
 
 # Solve with all sources
-E_field, H_field = solve(solver, sources, phantom)
+Efield, Hfield = solve(solver, sources, phantom)
 ```
 
 ## Custom Source Types
@@ -316,9 +316,9 @@ end
 function FrequencyMaxwell.generate_incident_fields(source::MyCustomSource, config::ConvergentBornConfig)
     # Generate E and H fields for your source
     # Return ElectromagneticField objects
-    E_field = ElectromagneticField(E_array)
-    H_field = ElectromagneticField(H_array)
-    return E_field, H_field
+    Efield = ElectromagneticField(E_array)
+    Hfield = ElectromagneticField(H_array)
+    return Efield, Hfield
 end
 ```
 

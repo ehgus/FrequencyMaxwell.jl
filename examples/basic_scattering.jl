@@ -80,30 +80,30 @@ function main()
     println("\nSolving electromagnetic scattering...")
     println("Note: This is a placeholder implementation")
 
-    E_field, H_field = solve(solver, source, phantom)
+    Efield, Hfield = solve(solver, source, phantom)
 
     # Wrap fields in structured container
-    fields = ElectromagneticField(E_field, H_field, solver.grid_size,
+    EMfield = ElectromagneticField(Efield, Hfield, solver.grid_size,
         solver.resolution, solver.wavelength)
 
     println("Solution completed successfully!")
     println("Field properties:")
-    println("  Electric field size: $(size(fields.E))")
-    println("  Magnetic field size: $(size(fields.H))")
-    println("  Total field energy: $(field_energy(fields)) J")
+    println("  Electric field size: $(size(EMfield.E))")
+    println("  Magnetic field size: $(size(EMfield.H))")
+    println("  Total field energy: $(field_energy(EMfield)) J")
 
     # Calculate field intensity
-    intensity = field_intensity(fields)
+    intensity = field_intensity(EMfield)
     max_intensity = maximum(intensity)
     enhancement = max_intensity / 1.0  # Relative to incident intensity
 
     heatmap(intensity[div(size(intensity, 1), 2), :, :])
-    heatmap(angle.(fields.E[div(size(fields.E, 1), 2), :, :, 1]))
+    heatmap(angle.(EMfield.E[div(size(EMfield.E, 1), 2), :, :, 1]))
     println("  Maximum intensity: $(max_intensity) (V/m)²")
     println("  Enhancement factor: $(round(enhancement, digits=2))")
 
     # Extract central plane for analysis
-    central_plane = extract_plane(fields, 3, div(solver.grid_size[3], 2))
+    central_plane = extract_plane(EMfield, 3, div(solver.grid_size[3], 2))
     plane_intensity = field_intensity(central_plane)
 
     println("Central plane analysis:")

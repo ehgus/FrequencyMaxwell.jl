@@ -57,10 +57,10 @@ The main interface is the `solve` function, which uses multiple dispatch to hand
 
 ```julia
 # Single source
-E_field, H_field = solve(solver, source, permittivity_phantom)
+Efield, Hfield = solve(solver, source, permittivity_phantom)
 
 # Multiple sources (coherent superposition)
-E_field, H_field = solve(solver, [source1, source2], permittivity_phantom)
+Efield, Hfield = solve(solver, [source1, source2], permittivity_phantom)
 ```
 
 ### LinearSolve.jl Integration
@@ -141,7 +141,7 @@ source2 = PlaneWaveSource(
 )
 
 # Solve with coherent superposition
-E_field, H_field = solve(solver, [source1, source2], phantom)
+Efield, Hfield = solve(solver, [source1, source2], phantom)
 ```
 
 This enables simulation of:
@@ -249,7 +249,7 @@ solver = ConvergentBornSolver(config)
 
 # Multiple solves reuse allocated memory
 for phantom in phantom_library
-    E_field, H_field = solve(solver, source, phantom)
+    Efield, Hfield = solve(solver, source, phantom)
     # Process results...
 end
 ```

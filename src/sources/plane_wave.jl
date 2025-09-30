@@ -159,7 +159,7 @@ function validate_source(source::PlaneWaveSource{T}) where {T}
 end
 
 """
-    generate_incident_fields(source::PlaneWaveSource, grid_config) -> (E_field, H_field)
+    generate_incident_fields(source::PlaneWaveSource, grid_config) -> (Efield, Hfield)
 
 Generate incident plane wave fields on a computational grid.
 
@@ -186,8 +186,8 @@ function _generate_incident_fields_arrays(
     Z_medium = Z0 / n_bg
 
     # Initialize field arrays
-    E_field = zeros(Complex{T}, grid_size..., 3)
-    H_field = zeros(Complex{T}, grid_size..., 3)
+    Efield = zeros(Complex{T}, grid_size..., 3)
+    Hfield = zeros(Complex{T}, grid_size..., 3)
 
     # Calculate phase array exp(ik·r)
     phase_array = _calculate_phase_array(source, grid_config, k0)
@@ -197,13 +197,13 @@ function _generate_incident_fields_arrays(
 
     # Fill field arrays
     for component in 1:3
-        E_field[:, :, :, component] = source.amplitude * source.polarization[component] *
+        Efield[:, :, :, component] = source.amplitude * source.polarization[component] *
                                       phase_array
-        H_field[:, :, :, component] = source.amplitude * H_polarization[component] *
+        Hfield[:, :, :, component] = source.amplitude * H_polarization[component] *
                                       phase_array
     end
 
-    return E_field, H_field
+    return Efield, Hfield
 end
 
 """
@@ -285,12 +285,12 @@ function generate_incident_fields(
 ) where {T <: AbstractFloat}
 
     # Generate field arrays
-    E_field, H_field = _generate_incident_fields_arrays(source, grid_config)
+    Efield, Hfield = _generate_incident_fields_arrays(source, grid_config)
 
     # Create ElectromagneticField object
     return ElectromagneticField(
-        E_field,
-        H_field,
+        Efield,
+        Hfield,
         grid_config.grid_size,
         grid_config.resolution,
         source.wavelength

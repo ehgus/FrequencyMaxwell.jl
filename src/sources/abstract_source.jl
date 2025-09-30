@@ -6,7 +6,7 @@ must implement, providing a consistent API for field generation.
 """
 
 """
-    generate_incident_fields(source::AbstractCurrentSource, grid_config) -> (E_field, H_field)
+    generate_incident_fields(source::AbstractCurrentSource, grid_config) -> (Efield, Hfield)
 
 Generate incident electromagnetic fields for the given source on a computational grid.
 
@@ -15,8 +15,8 @@ Generate incident electromagnetic fields for the given source on a computational
 - `grid_config`: Grid configuration object containing spatial discretization
 
 # Returns
-- `E_field::AbstractArray{Complex{T}, 4}`: Electric field (last dimension = 3 for components)
-- `H_field::AbstractArray{Complex{T}, 4}`: Magnetic field (last dimension = 3 for components)
+- `Efield::AbstractArray{Complex{T}, 4}`: Electric field (last dimension = 3 for components)
+- `Hfield::AbstractArray{Complex{T}, 4}`: Magnetic field (last dimension = 3 for components)
 
 # Requirements
 All concrete source types must implement this method to generate physically

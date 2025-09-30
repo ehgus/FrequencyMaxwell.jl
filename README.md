@@ -106,10 +106,10 @@ phantom = phantom_bead(
 )
 
 # Solve the electromagnetic scattering problem
-E_field, H_field = solve(solver, source, phantom)
+Efield, Hfield = solve(solver, source, phantom)
 
 # Analyze results
-fields = ElectromagneticField(E_field, H_field, solver.grid_size,
+fields = ElectromagneticField(Efield, Hfield, solver.grid_size,
                              solver.resolution, solver.wavelength)
 
 println("Total field energy: $(field_energy(fields)) J")
@@ -138,7 +138,7 @@ source = PlaneWaveSource(
 )
 
 phantom = phantom_bead(solver.grid_size, [1.5^2], 32.0)
-E_field, H_field = solve(solver, source, phantom)
+Efield, Hfield = solve(solver, source, phantom)
 
 # Results are automatically transferred back to host
 ```
@@ -151,8 +151,8 @@ using FrequencyMaxwell, Zygote
 # Define an objective function for inverse design
 function objective(phantom_params)
     phantom = phantom_bead(config.grid_size, phantom_params, 16.0)
-    E_field, H_field = solve(solver, source, phantom)
-    fields = ElectromagneticField(E_field, H_field, config.grid_size, 
+    Efield, Hfield = solve(solver, source, phantom)
+    fields = ElectromagneticField(Efield, Hfield, config.grid_size, 
                                  config.resolution, config.wavelength)
     return field_energy(fields)  # Minimize total energy
 end
@@ -181,7 +181,7 @@ println("Gradient with respect to permittivity: $gradient")
 
 #### ElectromagneticField Type
 ```julia
-fields = ElectromagneticField(E_field, H_field, grid_size, resolution, wavelength)
+fields = ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
 
 # Field analysis functions
 energy = field_energy(fields)              # Total electromagnetic energy
@@ -244,7 +244,7 @@ solver = ConvergentBornSolver(config)
 source = PlaneWaveSource(wavelength=config.wavelength, 
                         polarization=[1.0, 0.0, 0.0])
 
-E_field, H_field = solve(solver, source, phantom)
+Efield, Hfield = solve(solver, source, phantom)
 ```
 
 ### Example 2: Material Characterization
@@ -256,9 +256,9 @@ using Optim
 function characterize_material(measured_intensity)
     function cost(permittivity)
         phantom = phantom_cylinder(config.grid_size, permittivity[1], 25.0)
-        E_field, H_field = solve(solver, source, phantom)
+        Efield, Hfield = solve(solver, source, phantom)
         computed_intensity = field_intensity(ElectromagneticField(
-            E_field, H_field, config.grid_size, config.resolution, config.wavelength))
+            Efield, Hfield, config.grid_size, config.resolution, config.wavelength))
         return norm(computed_intensity - measured_intensity)^2
     end
     

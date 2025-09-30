@@ -32,7 +32,7 @@ source = PlaneWaveSource(
 
 # Generate phantom and solve
 phantom = phantom_bead(solver.grid_size, [1.5^2], 16.0)
-E_field, H_field = solve(solver, source, phantom)
+Efield, Hfield = solve(solver, source, phantom)
 ```
 
 ## GPU Acceleration

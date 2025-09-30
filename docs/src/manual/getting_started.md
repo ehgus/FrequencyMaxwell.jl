@@ -54,14 +54,14 @@ permittivity_phantom = phantom_bead(
 )
 
 # Step 4: Solve the electromagnetic problem
-E_field, H_field = solve(solver, source, permittivity_phantom)
+Efield, Hfield = solve(solver, source, permittivity_phantom)
 
 # Step 5: Analyze results
-println("Electric field dimensions: ", size(E_field.E))
-println("Magnetic field dimensions: ", size(H_field.H))
+println("Electric field dimensions: ", size(Efield))
+println("Magnetic field dimensions: ", size(Hfield))
 
 # Calculate field energy
-total_energy = field_energy(E_field) + field_energy(H_field)
+total_energy = field_energy(Efield) + field_energy(Hfield)
 println("Total field energy: ", total_energy)
 ```
 
@@ -69,8 +69,8 @@ println("Total field energy: ", total_energy)
 
 The `solve` function returns two `ElectromagneticField` objects:
 
-- `E_field`: Contains the total electric field (incident + scattered)
-- `H_field`: Contains the total magnetic field (incident + scattered)
+- `Efield`: Contains the total electric field (incident + scattered)
+- `Hfield`: Contains the total magnetic field (incident + scattered)
 
 Each field object has:
 - `.E` or `.H`: The 4D field array with dimensions `(3, nx, ny, nz)` representing the vector field components
