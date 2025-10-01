@@ -198,9 +198,9 @@ function _generate_incident_fields_arrays(
     # Fill field arrays
     for component in 1:3
         Efield[:, :, :, component] = source.amplitude * source.polarization[component] *
-                                      phase_array
+                                     phase_array
         Hfield[:, :, :, component] = source.amplitude * H_polarization[component] *
-                                      phase_array
+                                     phase_array
     end
 
     return Efield, Hfield

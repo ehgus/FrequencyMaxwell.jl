@@ -23,10 +23,7 @@ for streamlined usage while maintaining high performance and AD compatibility.
 - `permittivity_bg::T`: Background relative permittivity
 - `resolution::NTuple{3, T}`: Spatial resolution (dx, dy, dz) in meters
 - `grid_size::NTuple{3, Int}`: Number of grid points (Nx, Ny, Nz)
-- `boundary_thickness::NTuple{3, T}`: PML boundary layer thickness in each direction
-- `field_attenuation::NTuple{3, T}`: Field attenuation layer thickness in each direction
-- `field_attenuation_sharpness::T`: Sharpness factor for field attenuation (0-1)
-- `periodic_boundary::NTuple{3, Bool}`: Periodic boundary conditions (x, y, z)
+- `boundary_conditions::NTuple{3, AbstractBoundaryCondition{T}}`: Boundary conditions per dimension (x, y, z)
 - `iterations_max::Int`: Maximum number of Born iterations (-1 for auto)
 - `tolerance::T`: Convergence tolerance for iterative solver
 - `linear_solver::SciMLLinearSolveAlgorithm`: LinearSolve.jl algorithm object
@@ -48,34 +45,58 @@ ConvergentBornSolver(;
     permittivity_bg::Real = 1.0,
     resolution::NTuple{3, <:Real},
     grid_size::NTuple{3, Int},
+    boundary_conditions::Union{AbstractBoundaryCondition, NTuple{3, <:AbstractBoundaryCondition}},
     device::Symbol = :cpu,
     # ... other optional parameters
 )
 ```
 
-# Example
+# Examples
 ```julia
-# Streamlined constructor
+# New interface with explicit boundary conditions
+bc_absorbing = AbsorbingBoundaryCondition(
+    thickness = 2.0e-6,
+    attenuation_thickness = 1.5e-6,
+    sharpness = 0.9
+)
 solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32),
-    device = :cuda  # GPU acceleration
+    boundary_conditions = bc_absorbing,  # Same for all dimensions
+    device = :cuda
+)
+
+# Mixed boundary conditions (periodic in x,y, absorbing in z)
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    boundary_conditions = (
+        PeriodicBoundaryCondition(),
+        PeriodicBoundaryCondition(),
+        bc_absorbing
+    )
 )
 ```
+
+# Boundary Condition Integration
+
+The solver now uses the boundary condition abstraction:
+- Padding pixels calculated from boundary conditions via `padding_pixels()`
+- Subpixel shifts extracted via `subpixel_shift()`
+- Field attenuation applied via `apply_attenuation!()`
+- Green's function averaging controlled via `requires_averaging()`
+
+This eliminates hardcoded boundary logic and enables flexible boundary configurations.
 """
 mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
                AbstractElectromagneticSolver{T}
-    # Configuration fields (formerly in ConvergentBornConfig)
+    # Configuration fields
     wavelength::T
     permittivity_bg::T
     resolution::NTuple{3, T}
     grid_size::NTuple{3, Int}
-    boundary_thickness::NTuple{3, T}
-    field_attenuation::NTuple{3, T}
-    field_attenuation_sharpness::T
-    periodic_boundary::NTuple{3, Bool}
+    boundary_conditions::NTuple{3, AbstractBoundaryCondition{T}}
     iterations_max::Int
     tolerance::T
     linear_solver::SciMLLinearSolveAlgorithm
@@ -84,12 +105,11 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     # Solver state fields
     backend::Backend  # Cached KernelAbstractions.jl backend
     Green_function::Union{Nothing, DyadicGreen{T}}
-    flip_Green_function::Union{Nothing, DyadicGreen{T}}
     potential::Union{Nothing, AbstractArray}  # V = k²(ε/ε_bg - 1) with padding
     potential_device::Union{Nothing, AbstractArray}  # Device-resident potential
     permittivity::Union{Nothing, AbstractArray}  # Original permittivity without padding
-    boundary_thickness_pixel::NTuple{3, Int}
-    field_attenuation_pixel::NTuple{3, Int}
+    boundary_thickness_pixel::NTuple{3, Int}  # Derived from boundary conditions
+    field_attenuation_pixel::NTuple{3, Int}   # Derived from boundary conditions
     ROI::NTuple{6, Int}  # Region of interest bounds
     eps_imag::T  # Imaginary part for convergence
     Bornmax::Int  # Actual number of iterations to use
@@ -102,17 +122,14 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             permittivity_bg::T,
             resolution::NTuple{3, T},
             grid_size::NTuple{3, Int},
-            boundary_thickness::NTuple{3, T},
-            field_attenuation::NTuple{3, T},
-            field_attenuation_sharpness::T,
-            periodic_boundary::NTuple{3, Bool},
+            boundary_conditions::NTuple{3, AbstractBoundaryCondition{T}},
             iterations_max::Int,
             tolerance::T,
             linear_solver::SciMLLinearSolveAlgorithm,
             preconditioner::Symbol,
             backend::Backend
     ) where {T <: AbstractFloat}
-        # Validate parameters (similar to ConvergentBornConfig validation)
+        # Validate parameters
         wavelength > 0 || throw(ArgumentError("wavelength must be positive"))
         permittivity_bg > 0 || throw(ArgumentError("permittivity_bg must be positive"))
         all(resolution .> 0) ||
@@ -121,9 +138,22 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             throw(ArgumentError("all grid_size components must be positive"))
         0 ≤ tolerance ≤ 1 || throw(ArgumentError("tolerance must be in [0, 1]"))
 
-        # Calculate boundary thickness in pixels
-        boundary_thickness_pixel = round.(Int, boundary_thickness ./ (resolution .* 2))
-        field_attenuation_pixel = round.(Int, field_attenuation ./ (resolution .* 2))
+        # Calculate boundary thickness in pixels from boundary conditions
+        boundary_thickness_pixel = ntuple(3) do i
+            padding_pixels(boundary_conditions[i], resolution[i])
+        end
+
+        # Calculate field attenuation pixels from boundary conditions
+        # For AbsorbingBoundaryCondition, use attenuation_thickness
+        # For PeriodicBoundaryCondition, use 0
+        field_attenuation_pixel = ntuple(3) do i
+            bc = boundary_conditions[i]
+            if bc isa AbsorbingBoundaryCondition
+                round(Int, bc.attenuation_thickness / (resolution[i] * 2))
+            else
+                0
+            end
+        end
 
         # Calculate region of interest
         ROI = (
@@ -135,17 +165,16 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
         new{T}(
             # Configuration fields
             wavelength, permittivity_bg, resolution, grid_size,
-            boundary_thickness, field_attenuation, field_attenuation_sharpness,
-            periodic_boundary, iterations_max, tolerance, linear_solver, preconditioner,
+            boundary_conditions,  # NEW: Store boundary conditions directly
+            iterations_max, tolerance, linear_solver, preconditioner,
             # Solver state fields
             backend,  # KernelAbstractions.jl backend (cached)
-            nothing,  # Green_function - computed lazily
-            nothing,  # flip_Green_function - computed lazily
+            nothing,  # Green_function - computed lazily (handles flip internally)
             nothing,  # potential - set during solve
             nothing,  # potential_device - set during solve
             nothing,  # permittivity - set during solve
-            boundary_thickness_pixel,
-            field_attenuation_pixel,
+            boundary_thickness_pixel,  # Derived from boundary conditions
+            field_attenuation_pixel,   # Derived from boundary conditions
             ROI,
             T(0),     # eps_imag - calculated based on potential
             0,        # Bornmax - calculated automatically
@@ -154,6 +183,112 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             nothing   # solver_state - initialized during solve
         )
     end
+end
+
+"""
+    ConvergentBornSolver(; kwargs...) -> ConvergentBornSolver
+
+Public keyword-argument constructor for ConvergentBornSolver with boundary condition support.
+
+# Required Arguments
+- `wavelength::Real`: Wavelength in background medium (meters)
+- `resolution::NTuple{3, <:Real}`: Spatial resolution (dx, dy, dz) in meters
+- `grid_size::NTuple{3, Int}`: Grid dimensions (Nx, Ny, Nz)
+- `boundary_conditions`: Either a single `AbstractBoundaryCondition` (applied to all dimensions)
+  or `NTuple{3, AbstractBoundaryCondition}` for per-dimension control
+
+# Optional Arguments
+- `permittivity_bg::Real = 1.0`: Background relative permittivity
+- `iterations_max::Int = -1`: Maximum Born iterations (-1 for auto)
+- `tolerance::Real = 1e-6`: Convergence tolerance
+- `linear_solver = KrylovJL_GMRES()`: LinearSolve.jl algorithm
+- `preconditioner::Symbol = :none`: Preconditioning strategy (:none, :diagonal, :ilu)
+- `device::Symbol = :cpu`: Compute device (:cpu, :cuda, :amdgpu, :metal, :oneapi)
+
+# Examples
+```julia
+# Simple absorbing boundaries (same on all dimensions)
+bc = AbsorbingBoundaryCondition(
+    thickness = 2.0e-6,
+    attenuation_thickness = 1.5e-6,
+    sharpness = 0.9
+)
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (128, 128, 32),
+    boundary_conditions = bc
+)
+
+# Mixed boundaries: periodic in x,y, absorbing in z
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (128, 128, 32),
+    boundary_conditions = (
+        PeriodicBoundaryCondition(),
+        PeriodicBoundaryCondition(),
+        bc
+    )
+)
+
+# GPU acceleration with CUDA
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    boundary_conditions = bc,
+    device = :cuda
+)
+```
+"""
+function ConvergentBornSolver(;
+        wavelength::Real,
+        permittivity_bg::Real = 1.0,
+        resolution::NTuple{3, <:Real},
+        grid_size::NTuple{3, Int},
+        boundary_conditions,  # Accept any tuple or single boundary condition
+        iterations_max::Int = -1,
+        tolerance::Real = 1e-6,
+        linear_solver::SciMLLinearSolveAlgorithm = KrylovJL_GMRES(),
+        preconditioner::Symbol = :none,
+        device::Symbol = :cpu)
+    # Determine floating-point type from inputs (promote to highest precision)
+    T = promote_type(
+        typeof(float(wavelength)),
+        typeof(float(permittivity_bg)),
+        typeof(float(first(resolution))),
+        typeof(float(tolerance))
+    )
+
+    # Convert boundary_conditions to NTuple{3, AbstractBoundaryCondition{T}}
+    bcs = if boundary_conditions isa AbstractBoundaryCondition
+        # Single boundary condition - apply to all dimensions
+        # Convert to correct type parameter
+        bc_converted = _convert_boundary_type(boundary_conditions, T)
+        (bc_converted, bc_converted, bc_converted)
+    else
+        # Per-dimension boundary conditions - convert each
+        ntuple(3) do i
+            _convert_boundary_type(boundary_conditions[i], T)
+        end
+    end
+
+    # Create backend from device symbol
+    backend = create_backend_from_symbol(device)
+
+    # Call internal constructor with converted types
+    return ConvergentBornSolver{T}(
+        T(wavelength),
+        T(permittivity_bg),
+        T.(resolution),
+        grid_size,
+        bcs,
+        iterations_max,
+        T(tolerance),
+        linear_solver,
+        preconditioner,
+        backend
+    )
 end
 
 """
@@ -258,95 +393,6 @@ function create_backend_from_symbol(device::Symbol)
 end
 
 """
-    ConvergentBornSolver(; kwargs...) -> ConvergentBornSolver
-
-Enhanced constructor that accepts configuration parameters directly as keyword arguments.
-
-This is the recommended and only way to create a ConvergentBornSolver, providing
-direct access to all configuration parameters without intermediate objects.
-
-# Arguments
-- `wavelength::Real`: Wavelength in the background medium (meters)
-- `permittivity_bg::Real = 1.0`: Background relative permittivity
-- `resolution::NTuple{3, <:Real}`: Spatial resolution (dx, dy, dz) in meters
-- `grid_size::NTuple{3, Int}`: Number of grid points (Nx, Ny, Nz)
-- `device::Symbol = :cpu`: Device backend (:cpu, :cuda, :amdgpu, :metal, :oneapi)
-- `boundary_thickness::NTuple{3, <:Real} = (0.0, 0.0, 0.0)`: PML boundary layer thickness
-- `field_attenuation::NTuple{3, <:Real} = (0.0, 0.0, 0.0)`: Field attenuation layer thickness
-- `field_attenuation_sharpness::Real = 1.0`: Sharpness factor for field attenuation (0-1)
-- `periodic_boundary::NTuple{3, Bool} = (true, true, false)`: Periodic boundary conditions
-- `iterations_max::Int = -1`: Maximum number of Born iterations (-1 for auto)
-- `tolerance::Real = 1e-6`: Convergence tolerance for iterative solver
-- `linear_solver::SciMLLinearSolveAlgorithm = KrylovJL_GMRES()`: LinearSolve.jl algorithm
-- `preconditioner::Symbol = :none`: Preconditioning strategy (:none, :diagonal, :ilu)
-
-# Examples
-```julia
-# Basic usage
-solver = ConvergentBornSolver(
-    wavelength = 532e-9,
-    permittivity_bg = 1.333^2,
-    resolution = (50e-9, 50e-9, 50e-9),
-    grid_size = (128, 128, 64)
-)
-
-# With GPU acceleration
-solver = ConvergentBornSolver(
-    wavelength = 532e-9,
-    permittivity_bg = 1.333^2,
-    resolution = (50e-9, 50e-9, 50e-9),
-    grid_size = (128, 128, 64),
-    device = :cuda
-)
-
-# Advanced configuration
-solver = ConvergentBornSolver(
-    wavelength = 500e-9,
-    permittivity_bg = 1.0,
-    resolution = (25e-9, 25e-9, 25e-9),
-    grid_size = (256, 256, 128),
-    device = :cpu,
-    boundary_thickness = (1e-6, 1e-6, 2e-6),
-    tolerance = 1e-4,
-    iterations_max = 50
-)
-```
-"""
-function ConvergentBornSolver(;
-        wavelength::Real,
-        permittivity_bg::Real = 1.0,
-        resolution::NTuple{3, <:Real},
-        grid_size::NTuple{3, Int},
-        device::Symbol = :cpu,
-        boundary_thickness::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
-        field_attenuation::NTuple{3, <:Real} = (0.0, 0.0, 0.0),
-        field_attenuation_sharpness::Real = 1.0,
-        periodic_boundary::NTuple{3, Bool} = (true, true, false),
-        iterations_max::Int = -1,
-        tolerance::Real = 1e-6,
-        linear_solver::SciMLLinearSolveAlgorithm = KrylovJL_GMRES(),
-        preconditioner::Symbol = :none
-)
-    # Promote to common floating-point type
-    T = promote_type(typeof(wavelength), typeof(permittivity_bg),
-        eltype(resolution), eltype(boundary_thickness),
-        eltype(field_attenuation), typeof(field_attenuation_sharpness), typeof(tolerance))
-    T <: AbstractFloat || (T = Float64)  # Fallback to Float64 if not floating-point
-
-    # Create backend from device symbol
-    backend = create_backend_from_symbol(device)
-
-    # Create and return solver using the internal constructor
-    return ConvergentBornSolver{T}(
-        T(wavelength), T(permittivity_bg),
-        T.(resolution), grid_size,
-        T.(boundary_thickness), T.(field_attenuation), T(field_attenuation_sharpness),
-        periodic_boundary, iterations_max, T(tolerance),
-        linear_solver, preconditioner, backend
-    )
-end
-
-"""
     CBSPreconditioner{T} <: Function
 
 Left preconditioner for the Convergent Born Series implementing R = (1i/ε_imag) * potential.
@@ -428,19 +474,18 @@ The preconditioner R = (1i/ε_imag) * potential is applied separately through Li
 
 # Fields
 - `solver::ConvergentBornSolver{T}`: Reference to the CBS solver
-- `temp_arrays::NTuple{2, AbstractArray}`: Preallocated temporary 4D field arrays for efficiency
+- `temp_array::AbstractArray`: Preallocated temporary 4D field array for efficiency
 """
 struct CBSLinearOperator{T <: AbstractFloat}
     solver::ConvergentBornSolver{T}
-    temp_arrays::NTuple{2, AbstractArray}  # Preallocated temporary 4D field arrays
+    temp_array::AbstractArray  # Preallocated temporary 4D field array
 
     function CBSLinearOperator(solver::ConvergentBornSolver{T}) where {T}
-        # Preallocate temporary arrays to match field dimensions
+        # Preallocate temporary array to match field dimensions
         field_size = size(solver.potential)
-        temp1 = KernelAbstractions.zeros(solver.backend, Complex{T}, field_size..., 3)
-        temp2 = KernelAbstractions.zeros(solver.backend, Complex{T}, field_size..., 3)
+        temp_array = KernelAbstractions.zeros(solver.backend, Complex{T}, field_size..., 3)
 
-        new{T}(solver, (temp1, temp2))
+        new{T}(solver, temp_array)
     end
 end
 
@@ -460,7 +505,7 @@ The preconditioner R = (1i/ε_imag) * potential is applied separately through Li
 function (op::CBSLinearOperator{T})(y, x, p, t; α = 1, β = 0) where {T}
     solver = op.solver
     potential = solver.potential_device
-    psi, flip_psi = op.temp_arrays
+    psi = op.temp_array
 
     # Reshape flattened input to 4D field array
     field_shape = size(psi)
@@ -472,11 +517,7 @@ function (op::CBSLinearOperator{T})(y, x, p, t; α = 1, β = 0) where {T}
     psi .= potential .* x_field
 
     # Step 2: (G + G_flip)/2
-    flip_psi .= psi
     conv!(solver.Green_function, psi)
-    conv!(solver.flip_Green_function, flip_psi)
-    psi .+= flip_psi
-    psi ./= 2
 
     # Step 3: (1 - G*V*)x = x - G*V*x
     psi .= x_field .- psi
@@ -494,7 +535,7 @@ function LinearAlgebra.mul!(y, op::CBSLinearOperator, x, α, β)
 end
 
 # Make the operator compatible with LinearSolve.jl AbstractArray interface
-Base.size(op::CBSLinearOperator) = (length(op.temp_arrays[1]), length(op.temp_arrays[1]))
+Base.size(op::CBSLinearOperator) = (length(op.temp_array), length(op.temp_array))
 Base.size(op::CBSLinearOperator, dim::Integer) = size(op)[dim]
 Base.eltype(::CBSLinearOperator{T}) where {T} = Complex{T}
 Base.ndims(::CBSLinearOperator) = 2  # Matrix-like operator
@@ -581,7 +622,7 @@ function LinearSolve.solve(
 
     # Wrap in ElectromagneticField structure
     return ElectromagneticField(Efield, Hfield, solver.grid_size,
-                                solver.resolution, solver.wavelength)
+        solver.resolution, solver.wavelength)
 end
 
 """
@@ -641,10 +682,8 @@ function _initialize_solver!(
         solver.Bornmax = solver.iterations_max
     end
 
-    # Initialize Green's functions if needed
-    if solver.Green_function === nothing
-        solver.Green_function, solver.flip_Green_function = _compute_green_functions(solver)
-    end
+    # Initialize Green's function
+    solver.Green_function = _compute_green_function(solver)
 
     # Reset iteration tracking
     solver.iteration_count = 0
@@ -659,9 +698,12 @@ end
 """
     _compute_green_function(solver::ConvergentBornSolver) -> DyadicGreen
 
-Compute the dyadic Green's function for the given configuration.
+Compute the dyadic Green's function for the given configuration with internalized flip averaging.
+
+The returned Green's function automatically handles (G + G_flip)/2 averaging based on
+boundary conditions via the `use_averaging` field.
 """
-function _compute_green_functions(solver::ConvergentBornSolver{T}) where {T}
+function _compute_green_function(solver::ConvergentBornSolver{T}) where {T}
     # Calculate wave number in background medium
     k0_nm = T(2π) * sqrt(solver.permittivity_bg) / solver.wavelength
     k_square = k0_nm^2 + Complex{T}(0, solver.eps_imag)
@@ -669,19 +711,21 @@ function _compute_green_functions(solver::ConvergentBornSolver{T}) where {T}
     # Array size includes boundary padding
     arr_size = size(solver.potential)
 
-    # Subpixel shifts for proper boundary conditions
-    subpixel_shift = ntuple(i -> solver.periodic_boundary[i] ? T(0) : T(0.25), 3)
-    flip_subpixel_shift = ntuple(i -> solver.periodic_boundary[i] ? T(0) : T(-0.25), 3)
+    # Extract subpixel shifts from boundary conditions
+    shifts = ntuple(3) do i
+        subpixel_shift(solver.boundary_conditions[i])
+    end
 
-    # Create dyadic Green's functions
+    # Determine if averaging is required (any dimension needs it)
+    use_averaging = any(requires_averaging, solver.boundary_conditions)
+
+    # Create single dyadic Green's function (handles flip averaging internally)
     array_type = typeof(solver.potential) <: Array ? Array :
                  typeof(solver.potential).name.wrapper
     Green_fn = DyadicGreen(
-        array_type, k_square, arr_size, solver.resolution, subpixel_shift)
-    flip_Green_fn = DyadicGreen(
-        array_type, k_square, arr_size, solver.resolution, flip_subpixel_shift)
+        array_type, k_square, arr_size, solver.resolution, shifts, use_averaging)
 
-    return Green_fn, flip_Green_fn
+    return Green_fn
 end
 
 """
@@ -894,24 +938,18 @@ function _solve_cbs_scattering(
         source::AbstractArray{Complex{T}, 4}
 ) where {T <: AbstractFloat}
 
-    # Prepare right-hand side: Field_0 from first CBS iteration  
+    # Prepare right-hand side: Field_0 from first CBS iteration
     size_field = size(source)
     Green_fn = solver.Green_function
-    flip_Green_fn = solver.flip_Green_function
     psi = KernelAbstractions.zeros(solver.backend, Complex{T}, size_field)
-    flip_psi = KernelAbstractions.zeros(solver.backend, Complex{T}, size_field)
 
     if solver.Bornmax >= 1
         # Compute Field_0: first iteration of CBS without R preconditioner
         # Field_0 = (G + G_flip)/2 * source
         psi .= source
 
-        # Apply Green's functions: (G + G_flip)/2
-        flip_psi .= psi
+        # Apply Green's function
         conv!(Green_fn, psi)
-        conv!(flip_Green_fn, flip_psi)
-        psi .+= flip_psi
-        psi ./= 2
 
         # Set up LinearSolve.jl problem
         # Flatten arrays for LinearSolve.jl compatibility
@@ -1075,51 +1113,54 @@ end
 """
     _apply_attenuation_to_potential!(solver)
 
-Create and apply field attenuation masks directly to the solver's potential.
+Apply field attenuation masks to the solver's potential dimension-by-dimension.
 
-This optimized function combines mask creation and application into a single operation,
-eliminating the need to store intermediate mask arrays. The masks are created
-dimension-by-dimension and immediately applied to prevent boundary reflections.
+Each boundary condition applies attenuation along its corresponding dimension.
+This allows mixed boundary types (e.g., periodic in x,y and absorbing in z).
 """
 function _apply_attenuation_to_potential!(solver::ConvergentBornSolver{T}) where {T}
+    # Apply attenuation dimension-by-dimension using boundary condition logic
     for dim in 1:3
-        max_L = solver.boundary_thickness_pixel[dim]
-        L = min(max_L, solver.field_attenuation_pixel[dim])
+        bc = solver.boundary_conditions[dim]
 
-        if max_L == 0
+        # Skip dimensions with no padding/attenuation
+        if !requires_padding(bc)
             continue
         end
 
-        # Create attenuation window
-        window = if L > 0
-            tanh_vals = tanh.(range(T(-2.5), T(2.5), length = L))
-            (tanh_vals ./ tanh(T(2.5)) .- tanh(T(-2.5))) ./ 2
-        else
-            T[]
-        end
+        # For absorbing boundaries, apply attenuation along this dimension
+        if bc isa AbsorbingBoundaryCondition
+            max_L = solver.boundary_thickness_pixel[dim]
+            L = min(max_L, solver.field_attenuation_pixel[dim])
 
-        # Apply sharpness factor
-        window = window .* solver.field_attenuation_sharpness .+
-                 (1 - solver.field_attenuation_sharpness)
+            if max_L == 0
+                continue
+            end
 
-        # Create full filter
-        roi_size = solver.ROI[2 * dim] - solver.ROI[2 * dim - 1] + 1
-        remaining_padding = max_L - L
+            # Create attenuation window using the boundary condition's profile
+            window = _create_attenuation_window(bc.profile, L, T)
 
-        filter_1d = vcat(
-            window,
-            ones(T, roi_size + 2*remaining_padding),
-            reverse(window)
-        )
+            # Apply sharpness factor from boundary condition
+            window = window .* bc.sharpness .+ (1 - bc.sharpness)
 
-        # Create and apply mask directly to potential
-        # Use broadcasting to apply 1D filter along the specified dimension
-        if dim == 1
-            solver.potential .*= reshape(filter_1d, :, 1, 1)
-        elseif dim == 2
-            solver.potential .*= reshape(filter_1d, 1, :, 1)
-        else  # dim == 3
-            solver.potential .*= reshape(filter_1d, 1, 1, :)
+            # Create full filter
+            roi_size = solver.ROI[2 * dim] - solver.ROI[2 * dim - 1] + 1
+            remaining_padding = max_L - L
+
+            filter_1d = vcat(
+                window,
+                ones(T, roi_size + 2*remaining_padding),
+                reverse(window)
+            )
+
+            # Apply mask directly to potential along the specified dimension
+            if dim == 1
+                solver.potential .*= reshape(filter_1d, :, 1, 1)
+            elseif dim == 2
+                solver.potential .*= reshape(filter_1d, 1, :, 1)
+            else  # dim == 3
+                solver.potential .*= reshape(filter_1d, 1, 1, :)
+            end
         end
     end
 end
@@ -1167,6 +1208,22 @@ function Base.show(io::IO, solver::ConvergentBornSolver{T}) where {T}
     print(io, "\n  grid_size: $(solver.grid_size)")
     print(io, "\n  domain_size: $(domain_size(solver))")
     print(io, "\n  k₀: $(wavenumber_background(solver))")
+
+    # Display boundary conditions
+    bc_x = solver.boundary_conditions[1]
+    bc_y = solver.boundary_conditions[2]
+    bc_z = solver.boundary_conditions[3]
+    if bc_x == bc_y == bc_z
+        # Same boundary condition on all dimensions
+        print(io, "\n  boundary_conditions: $(typeof(bc_x).name.name) (all dimensions)")
+    else
+        # Different boundary conditions per dimension
+        print(io, "\n  boundary_conditions:")
+        print(io, "\n    x: $(typeof(bc_x).name.name)")
+        print(io, "\n    y: $(typeof(bc_y).name.name)")
+        print(io, "\n    z: $(typeof(bc_z).name.name)")
+    end
+
     print(io, "\n  device: $(typeof(solver.backend))")
     print(io, "\n  iterations: $(solver.iteration_count)")
     if !isempty(solver.residual_history)

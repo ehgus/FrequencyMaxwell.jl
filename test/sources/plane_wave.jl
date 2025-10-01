@@ -10,7 +10,8 @@ Tests electromagnetic source generation and field initialization.
             wavelength = 532e-9,
             permittivity_bg = 1.333^2,
             resolution = (50e-9, 50e-9, 50e-9),
-            grid_size = (64, 64, 32)
+            grid_size = (64, 64, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Test plane wave propagating in z-direction
@@ -46,7 +47,8 @@ Tests electromagnetic source generation and field initialization.
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
-            grid_size = (32, 32, 16)
+            grid_size = (32, 32, 16),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Test x-polarization
@@ -85,7 +87,8 @@ Tests electromagnetic source generation and field initialization.
             wavelength = 355e-9,  # UV wavelength from grating example
             permittivity_bg = 1.0,
             resolution = (10e-9, 10e-9, 10e-9),
-            grid_size = (20, 50, 50)
+            grid_size = (20, 50, 50),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Test different propagation directions - simplified from oblique incidence
@@ -123,7 +126,8 @@ Tests electromagnetic source generation and field initialization.
             wavelength = 633e-9,
             permittivity_bg = 1.33^2,
             resolution = (50e-9, 50e-9, 50e-9),
-            grid_size = (32, 32, 32)
+            grid_size = (32, 32, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         source = PlaneWaveSource(
@@ -166,7 +170,8 @@ Tests electromagnetic source generation and field initialization.
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
-            grid_size = (32, 32, 32)
+            grid_size = (32, 32, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Create multiple sources for coherent superposition

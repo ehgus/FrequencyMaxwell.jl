@@ -15,15 +15,25 @@ function main()
 
     # Configure and create the electromagnetic solver with optimized CBS parameters
     println("Creating solver with enhanced API...")
+
+    # Define boundary conditions: periodic in X,Y and absorbing in Z
+    bc_absorbing_z = AbsorbingBoundaryCondition(
+        thickness = 3.0e-6,              # 3 μm padding in Z
+        attenuation_thickness = 3.0e-6,  # 3 μm attenuation layer
+        sharpness = 1.0,                 # Sharp attenuation
+        profile = TanhProfile            # Smooth tanh profile (default)
+    )
+
     solver = ConvergentBornSolver(
         wavelength = 532e-9,      # 532 nm (green laser)
         permittivity_bg = 1.333^2, # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (128, 128, 64),           # 128×128×64 grid
-        boundary_thickness = (0.0, 0.0, 3.0e-6),  # 3 μm padding in Z for boundary absorption
-        field_attenuation = (0.0, 0.0, 3.0e-6),   # 3 μm attenuation in Z
-        field_attenuation_sharpness = 1.0,
-        periodic_boundary = (true, true, false),   # Periodic in XY, absorbing in Z
+        boundary_conditions = (               # Periodic in XY, absorbing in Z
+            PeriodicBoundaryCondition(),
+            PeriodicBoundaryCondition(),
+            bc_absorbing_z
+        ),
         iterations_max = -1,       # Auto-calculate optimal iterations
         tolerance = 1e-2,          # Convergence tolerance
         linear_solver = KrylovJL_GMRES()  # LinearSolver object

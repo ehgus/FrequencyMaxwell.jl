@@ -34,6 +34,7 @@ solver = ConvergentBornSolver(
     permittivity_bg = 1.33^2,     # Water background (n = 1.33)
     resolution = (50e-9, 50e-9, 50e-9),  # 50 nm voxel size
     grid_size = (128, 128, 32),   # 6.4 × 6.4 × 1.6 μm computational domain
+    boundary_conditions = PeriodicBoundaryCondition(),  # Periodic boundaries
     tolerance = 1e-6              # Convergence tolerance
 )
 
@@ -42,8 +43,7 @@ source = PlaneWaveSource(
     wavelength = solver.wavelength,
     polarization = [1.0, 0.0, 0.0],  # x-polarized light
     k_vector = [0.0, 0.0, 1.0],      # propagating in +z direction
-    amplitude = 1.0,                  # unit amplitude
-    phase = 0.0                       # zero phase
+    amplitude = 1.0                   # unit amplitude
 )
 
 # Step 3: Generate material distribution (dielectric bead)
@@ -54,33 +54,36 @@ permittivity_phantom = phantom_bead(
 )
 
 # Step 4: Solve the electromagnetic problem
-Efield, Hfield = solve(solver, source, permittivity_phantom)
+EMfield = solve(solver, source, permittivity_phantom)
 
 # Step 5: Analyze results
-println("Electric field dimensions: ", size(Efield))
-println("Magnetic field dimensions: ", size(Hfield))
+println("Electric field dimensions: ", size(EMfield.E))
+println("Magnetic field dimensions: ", size(EMfield.H))
 
-# Calculate field energy
-total_energy = field_energy(Efield) + field_energy(Hfield)
+# Calculate total field energy
+total_energy = field_energy(EMfield)
 println("Total field energy: ", total_energy)
 ```
 
 ## Understanding the Results
 
-The `solve` function returns two `ElectromagneticField` objects:
+The `solve` function returns an `ElectromagneticField` object containing both electric and magnetic fields:
 
-- `Efield`: Contains the total electric field (incident + scattered)
-- `Hfield`: Contains the total magnetic field (incident + scattered)
+- `EMfield.E`: The total electric field (incident + scattered)
+- `EMfield.H`: The total magnetic field (incident + scattered)
 
-Each field object has:
-- `.E` or `.H`: The 4D field array with dimensions `(3, nx, ny, nz)` representing the vector field components
-- Methods for field analysis like `field_energy()`, `field_intensity()`, and `poynting_vector()`
+Each field array has dimensions `(nx, ny, nz, 3)` representing the 3D grid with vector components.
+
+The `ElectromagneticField` object provides methods for field analysis:
+- `field_energy(EMfield)`: Total electromagnetic energy
+- `field_intensity(EMfield)`: Electric field intensity |E|²
+- `poynting_vector(EMfield)`: Power flow vector
 
 ## Key Concepts
 
-### Configuration-First Design
+### Integrated Solver Design
 
-FrequencyMaxwell.jl uses an immutable configuration approach where all simulation parameters are specified upfront in the `ConvergentBornConfig`. This provides:
+FrequencyMaxwell.jl uses an integrated solver design where all simulation parameters are specified in the `ConvergentBornSolver`. This provides:
 
 - **Type safety**: Automatic validation of all parameters
 - **Reproducibility**: Complete parameter specifications
@@ -106,6 +109,7 @@ solver = ConvergentBornSolver(
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32),
+    boundary_conditions = PeriodicBoundaryCondition(),
     device = :cuda
 )
 
@@ -120,8 +124,12 @@ FrequencyMaxwell.jl leverages the LinearSolve.jl ecosystem for maximum flexibili
 
 ```julia
 # Example: Using a different linear solver algorithm
-config = ConvergentBornConfig(
-    # ... other parameters ...
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (128, 128, 64),
+    boundary_conditions = PeriodicBoundaryCondition(),
     linear_solver = KrylovJL_GMRES()  # Recommended default algorithm
 )
 ```

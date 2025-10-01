@@ -86,26 +86,57 @@ solver = ConvergentBornSolver(
 
 #### Boundary Configuration
 
-**`boundary_thickness`** (optional, default: `(0.0, 0.0, 0.0)`)
-- **Type**: `NTuple{3, T}`
-- **Description**: PML boundary layer thickness in each direction
-- **Units**: Meters
-- **Usage**: Set to non-zero values for absorbing boundary conditions
+**`boundary_conditions`** (optional, default: `PeriodicBoundaryCondition()`)
+- **Type**: `AbstractBoundaryCondition{T}` or `NTuple{3, AbstractBoundaryCondition{T}}`
+- **Description**: Boundary conditions for each spatial dimension
+- **Usage**: Single boundary condition applied to all dimensions, or tuple for per-dimension control
+- **Available Types**:
+  - `PeriodicBoundaryCondition()`: Periodic boundaries (no padding)
+  - `AbsorbingBoundaryCondition(...)`: PML-style absorbing boundaries
 
-**`field_attenuation`** (optional, default: `(0.0, 0.0, 0.0)`)
-- **Type**: `NTuple{3, T}`
-- **Description**: Field attenuation layer thickness in each direction
-- **Units**: Meters
+**PeriodicBoundaryCondition**
+```julia
+bc = PeriodicBoundaryCondition()  # Float64 by default
+bc = PeriodicBoundaryCondition(Float32)  # Explicit precision
+```
+- No padding required
+- Suitable for periodic structures
 
-**`field_attenuation_sharpness`** (optional, default: `1.0`)
-- **Type**: `T <: AbstractFloat`
-- **Description**: Sharpness factor for field attenuation (0-1)
-- **Units**: Dimensionless
+**AbsorbingBoundaryCondition**
+```julia
+bc = AbsorbingBoundaryCondition(
+    thickness = 3.0e-6,              # Boundary layer thickness [m]
+    attenuation_thickness = 2.0e-6,  # Attenuation region thickness [m]
+    sharpness = 0.9,                 # Attenuation sharpness (0-1)
+    profile = TanhProfile            # Attenuation profile type
+)
+```
+- **thickness**: Total boundary padding thickness (must be ≥ attenuation_thickness)
+- **attenuation_thickness**: Width of the attenuation region
+- **sharpness**: Controls steepness of attenuation (0=gradual, 1=sharp)
+- **profile**: Attenuation window function
+  - `TanhProfile`: Smooth hyperbolic tangent (default)
+  - `ExponentialProfile`: Exponential decay
+  - `TukeyProfile`: Tukey window function
 
-**`periodic_boundary`** (optional, default: `(true, true, false)`)
-- **Type**: `NTuple{3, Bool}`
-- **Description**: Periodic boundary conditions (x, y, z)
-- **Recommendation**: `(true, true, false)` for typical 3D simulations
+**Mixed Boundary Conditions**
+```julia
+# Different boundaries per dimension
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (128, 128, 64),
+    boundary_conditions = (
+        PeriodicBoundaryCondition(),     # X: periodic
+        PeriodicBoundaryCondition(),     # Y: periodic
+        AbsorbingBoundaryCondition(      # Z: absorbing
+            thickness = 3.0e-6,
+            attenuation_thickness = 2.0e-6
+        )
+    )
+)
+```
 
 
 ## Configuration Utilities
@@ -133,15 +164,16 @@ The configuration system automatically:
 
 ```julia
 # This automatically promotes Int to Float64
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 2,        # Int promoted to Float64
     resolution = (50e-9, 50e-9, 50e-9),
-    grid_size = (128, 128, 64)
+    grid_size = (128, 128, 64),
+    boundary_conditions = PeriodicBoundaryCondition()
 )
 
 # Type information is preserved
-println(typeof(config))  # ConvergentBornConfig{Float64}
+println(typeof(solver))  # ConvergentBornSolver{Float64}
 ```
 
 ## Advanced Configuration
@@ -151,11 +183,22 @@ println(typeof(config))  # ConvergentBornConfig{Float64}
 For large-scale problems, GPU acceleration provides significant speedup:
 
 ```julia
+# Define absorbing boundaries for Z direction
+bc_absorbing = AbsorbingBoundaryCondition(
+    thickness = 3.0e-6,
+    attenuation_thickness = 2.0e-6
+)
+
 solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (256, 256, 128),
+    boundary_conditions = (
+        PeriodicBoundaryCondition(),
+        PeriodicBoundaryCondition(),
+        bc_absorbing
+    ),
     device = :cuda,              # Use NVIDIA GPU
     tolerance = 1e-6
 )
@@ -170,11 +213,12 @@ solver = ConvergentBornSolver(
 For high-resolution simulations with large grids:
 
 ```julia
-config = ConvergentBornConfig{Float32}(  # Memory-efficient precision
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (25e-9, 25e-9, 25e-9),  # Higher resolution
-    grid_size = (256, 256, 128)          # Larger grids
+    grid_size = (256, 256, 128),          # Larger grids
+    boundary_conditions = PeriodicBoundaryCondition()
 )
 ```
 
@@ -183,11 +227,12 @@ config = ConvergentBornConfig{Float32}(  # Memory-efficient precision
 For large simulations, consider memory-efficient configurations:
 
 ```julia
-config = ConvergentBornConfig{Float32}(  # Use Float32 for memory efficiency
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (512, 512, 256),
+    boundary_conditions = PeriodicBoundaryCondition(),
     tolerance = 1e-5               # Slightly relaxed tolerance for speed
 )
 ```
@@ -197,11 +242,12 @@ config = ConvergentBornConfig{Float32}(  # Use Float32 for memory efficiency
 For applications requiring high numerical accuracy:
 
 ```julia
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
+    boundary_conditions = PeriodicBoundaryCondition(),
     tolerance = 1e-7,              # Higher precision
     linear_solver = KrylovJL_GMRES()  # Recommended default choice
 )
@@ -215,30 +261,23 @@ FrequencyMaxwell.jl supports any LinearSolve.jl algorithm:
 using LinearSolve
 
 # Different solver algorithms
-config_gmres = ConvergentBornConfig(
+solver_gmres = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
+    boundary_conditions = PeriodicBoundaryCondition(),
     linear_solver = KrylovJL_GMRES(),
     tolerance = 1e-6
 )
 
-config_bicgstab = ConvergentBornConfig(
+solver_bicgstab = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
-    linear_solver = KrylovJL_GMRES()  # Recommended default
-    tolerance = 1e-6
-)
-
-config_idr = ConvergentBornConfig(
-    wavelength = 500e-9,
-    permittivity_bg = 1.33^2,
-    resolution = (50e-9, 50e-9, 50e-9),
-    grid_size = (128, 128, 64),
-    linear_solver = KrylovJL_GMRES()  # Recommended default
+    boundary_conditions = PeriodicBoundaryCondition(),
+    linear_solver = KrylovJL_BICGSTAB(),
     tolerance = 1e-6
 )
 ```
@@ -264,20 +303,26 @@ config_idr = ConvergentBornConfig(
 - **Algorithm choice**: Try different linear solvers if convergence is slow
 - **Boundary configuration**: Optimize boundary thickness and field attenuation for your specific problem
 
-## Configuration Display
+## Solver Display
 
-Configurations have custom `show` methods for clear REPL display:
+The solver has custom `show` methods for clear REPL display:
 
 ```julia
-julia> config = ConvergentBornConfig(wavelength=500e-9, permittivity_bg=1.77,
-                                    resolution=(50e-9, 50e-9, 50e-9), grid_size=(128, 128, 64))
+julia> solver = ConvergentBornSolver(
+           wavelength=500e-9,
+           permittivity_bg=1.77,
+           resolution=(50e-9, 50e-9, 50e-9),
+           grid_size=(128, 128, 64),
+           boundary_conditions=PeriodicBoundaryCondition()
+       )
 
-ConvergentBornConfig{Float64}:
+ConvergentBornSolver{Float64}:
   Physical parameters:
     wavelength: 5.0e-7 m
     permittivity_bg: 1.77
     resolution: (5.0e-8, 5.0e-8, 5.0e-8) m
     grid_size: (128, 128, 64)
+  Boundary conditions: PeriodicBoundaryCondition{Float64}
   Domain: 6.4 × 6.4 × 3.2 μm
   Solver: KrylovJL_GMRES(), tolerance=1.0e-6, iterations_max=-1
 ```

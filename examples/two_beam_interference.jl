@@ -37,34 +37,41 @@ function test_two_beam_interference_homogeneous()
     println("=== Two-Beam Interference Test (Homogeneous Medium) ===")
 
     # Configure solver (matching MATLAB parameters)
-    config = ConvergentBornConfig(
+    # Define boundary conditions: periodic in X,Y and absorbing in Z
+    bc_absorbing_z = AbsorbingBoundaryCondition(
+        thickness = 300e-9,              # 300nm padding (6 pixels * 50nm)
+        attenuation_thickness = 300e-9,  # 300nm attenuation layer
+        sharpness = 1.0,                 # Sharp attenuation
+        profile = TanhProfile            # Smooth tanh profile
+    )
+
+    solver = ConvergentBornSolver(
         wavelength = 532e-9,           # 532 nm
         permittivity_bg = 1.333^2,     # Water background (n=1.333)
-        resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution  
+        resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (201, 201, 191),   # Matching MATLAB grid
-        boundary_thickness = (0.0, 0.0, 300e-9),  # 6 pixels * 50nm = 300nm
-        field_attenuation = (0.0, 0.0, 300e-9),
-        field_attenuation_sharpness = 1.0,
-        periodic_boundary = (true, true, false),
+        boundary_conditions = (        # Periodic in XY, absorbing in Z
+            PeriodicBoundaryCondition(),
+            PeriodicBoundaryCondition(),
+            bc_absorbing_z
+        ),
         iterations_max = -1,           # Auto-determine iterations
         tolerance = 1e-6,
         linear_solver = KrylovJL_BICGSTAB()
     )
 
-    solver = ConvergentBornSolver(config)
-
     println("✓ Solver configured with:")
-    println("  Wavelength: $(config.wavelength*1e9) nm")
-    println("  Background permittivity: $(config.permittivity_bg)")
-    println("  Grid size: $(config.grid_size)")
-    println("  Domain size: $(domain_size(config) .* 1e6) μm")
+    println("  Wavelength: $(solver.wavelength*1e9) nm")
+    println("  Background permittivity: $(solver.permittivity_bg)")
+    println("  Grid size: $(solver.grid_size)")
+    println("  Domain size: $(domain_size(solver) .* 1e6) μm")
 
     # Create two-beam sources (matching MATLAB illum_order = 3)
     illum_order = 3
-    ky = 2π * illum_order / (config.grid_size[2] * config.resolution[2])
+    ky = 2π * illum_order / (solver.grid_size[2] * solver.resolution[2])
 
     # Calculate propagation angle
-    k_bg = wavenumber_background(config)
+    k_bg = wavenumber_background(solver)
     angle = asin(ky / k_bg)
 
     println("✓ Two-beam configuration:")
@@ -74,16 +81,16 @@ function test_two_beam_interference_homogeneous()
 
     # Create plane wave sources with opposite horizontal angles
     source1 = PlaneWaveSource(
-        wavelength = config.wavelength,
+        wavelength = solver.wavelength,
         polarization = [1.0, 0.0, 0.0],  # X-polarized
         k_vector = [0.0, sin(angle), cos(angle)],  # +angle beam
         amplitude = 1.0
     )
 
     source2 = PlaneWaveSource(
-        wavelength = config.wavelength,
+        wavelength = solver.wavelength,
         polarization = [1.0, 0.0, 0.0],  # X-polarized
-        k_vector = [0.0, -sin(angle), cos(angle)], # -angle beam  
+        k_vector = [0.0, -sin(angle), cos(angle)], # -angle beam
         amplitude = 1.0
     )
 
@@ -95,10 +102,10 @@ function test_two_beam_interference_homogeneous()
         println("  Source $(i): k = $(src.k_vector), λ = $(src.wavelength*1e9) nm")
     end
 
-    # Homogeneous medium (water everywhere) 
-    permittivity = fill(config.permittivity_bg, config.grid_size)
+    # Homogeneous medium (water everywhere)
+    permittivity = fill(solver.permittivity_bg, solver.grid_size)
 
-    println("✓ Homogeneous medium: ε = $(config.permittivity_bg)")
+    println("✓ Homogeneous medium: ε = $(solver.permittivity_bg)")
 
     # Solve multi-source electromagnetic problem
     println("\n--- Solving Multi-Source CBS Problem ---")
@@ -133,7 +140,7 @@ function test_two_beam_interference_homogeneous()
 
     # Count interference fringes
     # For illum_order = 3, expect ~6 fringes across Y dimension
-    y_coords = (0:(config.grid_size[2] - 1)) .* config.resolution[2]
+    y_coords = (0:(solver.grid_size[2] - 1)) .* solver.resolution[2]
     expected_fringes = 2 * illum_order
 
     # Simple fringe counting by detecting maxima
@@ -142,7 +149,7 @@ function test_two_beam_interference_homogeneous()
     println("✓ Fringe analysis:")
     println("  Detected fringes: $(fringe_count)")
     println("  Expected fringes: $(expected_fringes)")
-    println("  Fringe spacing: $(config.grid_size[2] * config.resolution[2] / expected_fringes * 1e6) μm")
+    println("  Fringe spacing: $(solver.grid_size[2] * solver.resolution[2] / expected_fringes * 1e6) μm")
 
     # Validation checks
     success = true

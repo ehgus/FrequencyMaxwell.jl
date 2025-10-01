@@ -61,7 +61,8 @@ struct ElectromagneticField{T <: AbstractFloat}
     ) where {T <: AbstractFloat}
 
         # Validate field array dimensions
-        size(Efield) == size(Hfield) || throw(ArgumentError("Efield and Hfield arrays must have same size"))
+        size(Efield) == size(Hfield) ||
+            throw(ArgumentError("Efield and Hfield arrays must have same size"))
 
         # For 4D arrays (3D space + 3 components), check grid consistency
         if ndims(Efield) == 4

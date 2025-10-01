@@ -30,7 +30,8 @@ solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
-    grid_size = (128, 128, 32)
+    grid_size = (128, 128, 32),
+    boundary_conditions = PeriodicBoundaryCondition()
 )
 ```
 
@@ -110,11 +111,12 @@ Example configuration:
 ```julia
 using LinearSolve
 
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
+    boundary_conditions = PeriodicBoundaryCondition(),
     linear_solver = KrylovJL_GMRES(),  # Recommended default algorithm
     tolerance = 1e-6
 )
@@ -152,20 +154,23 @@ This enables simulation of:
 
 ### Precision Selection
 
-Choose precision based on problem requirements:
+The solver uses Float64 by default. All parameters are automatically type-promoted:
 
 ```julia
-# High precision (Float64) - default
-config64 = ConvergentBornConfig{Float64}(...)
-
-# Memory-efficient (Float32)
-config32 = ConvergentBornConfig{Float32}(...)
+# Default Float64 precision
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (128, 128, 64),
+    boundary_conditions = PeriodicBoundaryCondition()
+)
 ```
 
-Float32 provides:
-- 50% memory reduction
-- Faster computation on many GPUs
-- Usually sufficient precision for most applications
+Float64 provides:
+- High numerical precision
+- Consistent with Julia's default numeric types
+- Suitable for most electromagnetic simulations
 
 ### Memory Management
 
@@ -207,33 +212,36 @@ If convergence issues occur:
 1. **Try different linear solvers**:
 ```julia
 # Try BiCGStabL instead of KrylovJL_GMRES
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
-    linear_solver = BiCGStabL(2)  # Alternative algorithm
+    boundary_conditions = PeriodicBoundaryCondition(),
+    linear_solver = KrylovJL_BICGSTAB()  # Alternative algorithm
 )
 ```
 
 2. **Adjust tolerance**:
 ```julia
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
+    boundary_conditions = PeriodicBoundaryCondition(),
     tolerance = 1e-5  # Relax from default 1e-6
 )
 ```
 
 3. **Try different grid resolution**:
 ```julia
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (75e-9, 75e-9, 75e-9),  # Coarser resolution
     grid_size = (96, 96, 48),             # Smaller problem size
+    boundary_conditions = PeriodicBoundaryCondition(),
     linear_solver = KrylovJL_GMRES()
 )
 ```
@@ -245,11 +253,17 @@ config = ConvergentBornConfig(
 Solver state can be reused across multiple solves:
 
 ```julia
-solver = ConvergentBornSolver(config)
+solver = ConvergentBornSolver(
+    wavelength = 500e-9,
+    permittivity_bg = 1.33^2,
+    resolution = (50e-9, 50e-9, 50e-9),
+    grid_size = (128, 128, 64),
+    boundary_conditions = PeriodicBoundaryCondition()
+)
 
 # Multiple solves reuse allocated memory
 for phantom in phantom_library
-    Efield, Hfield = solve(solver, source, phantom)
+    EMfield = solve(solver, source, phantom)
     # Process results...
 end
 ```

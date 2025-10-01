@@ -26,6 +26,16 @@ grid_spacing
 wavenumber_background
 ```
 
+### Boundary Conditions
+
+Boundary condition types for electromagnetic simulations.
+
+```@docs
+AbstractBoundaryCondition
+PeriodicBoundaryCondition
+AbsorbingBoundaryCondition
+```
+
 ### GPU Backend Utilities
 
 Functions for GPU device management (available when GPU packages are loaded).

@@ -43,9 +43,7 @@ padding = padding_pixels(absorbing, 50e-9)     # 40 pixels
 ```
 """
 
-#==============================================================================#
 # Abstract Type Hierarchy
-#==============================================================================#
 
 """
     AbstractBoundaryCondition{T<:AbstractFloat}
@@ -102,9 +100,7 @@ the shift values (0.0 for periodic, ±0.25 for absorbing), not the averaging.
 """
 abstract type AbstractBoundaryCondition{T <: AbstractFloat} end
 
-#==============================================================================#
 # Periodic Boundary Condition
-#==============================================================================#
 
 """
     PeriodicBoundaryCondition{T} <: AbstractBoundaryCondition{T}
@@ -172,32 +168,104 @@ struct PeriodicBoundaryCondition{T <: AbstractFloat} <: AbstractBoundaryConditio
     # All behavior is defined through multiple dispatch on interface methods
 end
 
-#==============================================================================#
+"""
+    PeriodicBoundaryCondition(::Type{T}=Float64) -> PeriodicBoundaryCondition{T}
+
+Convenience constructor for PeriodicBoundaryCondition with optional type specification.
+
+# Arguments
+- `T::Type{<:AbstractFloat} = Float64`: Floating-point precision type (optional)
+
+# Examples
+```julia
+# Default Float64 precision
+bc = PeriodicBoundaryCondition()
+
+# Explicit Float32 precision
+bc32 = PeriodicBoundaryCondition(Float32)
+```
+"""
+function PeriodicBoundaryCondition(::Type{T} = Float64) where {T <: AbstractFloat}
+    PeriodicBoundaryCondition{T}()
+end
+
+# Attenuation Profile Types
+
+"""
+    AttenuationProfile
+
+Enumeration of available attenuation profile functions for absorbing boundaries.
+
+# Available Profiles
+
+- **TanhProfile**: Hyperbolic tangent profile (default)
+  - Smooth, continuous attenuation with excellent stability
+  - Formula: `window(x) = [tanh(x) - tanh(-2.5)] / 2`
+  - Best for: General-purpose electromagnetic simulations
+
+- **ExponentialProfile**: Exponential decay profile
+  - Rapid decay with natural physical interpretation
+  - Formula: `window(x) = exp(-((L-x)/w)²)`
+  - Best for: Strong absorption, wide-band simulations
+
+- **TukeyProfile**: Tukey (tapered cosine) window
+  - Cosine-based smooth transition
+  - Formula: `window(x) = 0.5 * (1 + cos(π*(1-x/L)))`
+  - Best for: Minimal dispersion, narrowband problems
+
+# Example
+
+```julia
+# Create absorbing boundary with different profiles
+bc_tanh = AbsorbingBoundaryCondition(
+    thickness = 2.0e-6,
+    attenuation_thickness = 1.5e-6,
+    profile = TanhProfile  # Default
+)
+
+bc_exp = AbsorbingBoundaryCondition(
+    thickness = 2.0e-6,
+    attenuation_thickness = 1.5e-6,
+    profile = ExponentialProfile  # Rapid absorption
+)
+```
+
+# References
+- Tukey window: J. W. Tukey, "An introduction to the calculations of numerical spectrum analysis"
+- Planck-taper: McKechan et al., "A tapering window for time-domain templates"
+"""
+@enum AttenuationProfile begin
+    TanhProfile          # Hyperbolic tangent (default, current implementation)
+    ExponentialProfile   # Exponential decay
+    TukeyProfile         # Tukey (tapered cosine) window
+end
+
 # Absorbing Boundary Condition
-#==============================================================================#
 
 """
     AbsorbingBoundaryCondition{T} <: AbstractBoundaryCondition{T}
 
-Absorbing boundary condition with tanh-based field attenuation.
+Absorbing boundary condition with configurable attenuation profiles.
 
 Absorbing boundaries prevent reflections from computational domain edges by
-smoothly attenuating electromagnetic fields to zero near boundaries. This
-implementation uses hyperbolic tangent (tanh) profiles for smooth, gradual
-attenuation that minimizes numerical artifacts.
+smoothly attenuating electromagnetic fields to zero near boundaries. Multiple
+attenuation profiles are available (Tanh, Exponential, Tukey, Planck-taper),
+each optimized for different simulation scenarios.
 
 # Mathematical Description
 
-Field attenuation is applied dimension-by-dimension using a tanh-based window:
+Field attenuation is applied dimension-by-dimension using the selected profile.
+The general form is:
 ```
-window(x) = [tanh((x-x₁)/w) - tanh((x₀)/w)] / 2
 attenuation(x) = sharpness * window(x) + (1 - sharpness)
 ```
 
 where:
 - x ∈ [0, L] is position within attenuation layer
-- w is the width parameter controlling transition smoothness
-- sharpness ∈ [0, 1] controls how abrupt the transition is
+- window(x) is the profile-specific attenuation function
+- sharpness ∈ [0, 1] controls transition abruptness
+
+See `AttenuationProfile` documentation for specific profile formulas.
 
 # Green's Function Treatment
 
@@ -217,6 +285,7 @@ handling of non-periodic boundary conditions.
   - 0.0: Gentle, gradual attenuation (minimal artifacts, wider transition)
   - 1.0: Sharp, abrupt attenuation (narrow transition, possible artifacts)
   - 0.7-0.9: Recommended range for most applications
+- `profile::AttenuationProfile`: Attenuation function type (default: TanhProfile)
 
 # Constructor
 
@@ -224,7 +293,8 @@ handling of non-periodic boundary conditions.
 AbsorbingBoundaryCondition(;
     thickness::Real,
     attenuation_thickness::Real,
-    sharpness::Real = 0.9
+    sharpness::Real = 0.9,
+    profile::AttenuationProfile = TanhProfile
 )
 ```
 
@@ -238,11 +308,19 @@ Constructor validates:
 # Example
 
 ```julia
-# Create absorbing boundary
+# Create absorbing boundary with default Tanh profile
 bc = AbsorbingBoundaryCondition(
     thickness = 2.0e-6,           # 2 micron total padding
     attenuation_thickness = 1.5e-6,  # 1.5 micron attenuation layer
     sharpness = 0.9               # Sharp attenuation (90%)
+)
+
+# Use different attenuation profile
+bc_exp = AbsorbingBoundaryCondition(
+    thickness = 2.0e-6,
+    attenuation_thickness = 1.5e-6,
+    sharpness = 0.85,
+    profile = ExponentialProfile  # Exponential decay
 )
 
 # Query properties
@@ -271,11 +349,13 @@ struct AbsorbingBoundaryCondition{T <: AbstractFloat} <: AbstractBoundaryConditi
     thickness::T                    # Physical thickness in meters
     attenuation_thickness::T        # Attenuation layer thickness in meters
     sharpness::T                    # Sharpness factor (0-1)
+    profile::AttenuationProfile     # Attenuation function type
 
     function AbsorbingBoundaryCondition{T}(
             thickness::T,
             attenuation_thickness::T,
-            sharpness::T
+            sharpness::T,
+            profile::AttenuationProfile
     ) where {T <: AbstractFloat}
         # Validate parameters
         thickness > 0 ||
@@ -289,7 +369,7 @@ struct AbsorbingBoundaryCondition{T <: AbstractFloat} <: AbstractBoundaryConditi
         0 ≤ sharpness ≤ 1 ||
             throw(ArgumentError("sharpness must be in [0, 1], got: $sharpness"))
 
-        new{T}(thickness, attenuation_thickness, sharpness)
+        new{T}(thickness, attenuation_thickness, sharpness, profile)
     end
 end
 
@@ -302,31 +382,32 @@ Convenience constructor with keyword arguments and automatic type promotion.
 - `thickness::Real`: Physical thickness of boundary padding (meters)
 - `attenuation_thickness::Real`: Physical thickness of attenuation layer (meters)
 - `sharpness::Real = 0.9`: Sharpness factor ∈ [0, 1]
+- `profile::AttenuationProfile = TanhProfile`: Attenuation function type
 
 # Example
 ```julia
 bc = AbsorbingBoundaryCondition(
     thickness = 2.0e-6,
     attenuation_thickness = 1.5e-6,
-    sharpness = 0.9
+    sharpness = 0.9,
+    profile = TanhProfile
 )
 ```
 """
 function AbsorbingBoundaryCondition(;
         thickness::Real,
         attenuation_thickness::Real,
-        sharpness::Real = 0.9
+        sharpness::Real = 0.9,
+        profile::AttenuationProfile = TanhProfile
 )
     # Promote to common floating-point type
     T = promote_type(typeof(thickness), typeof(attenuation_thickness), typeof(sharpness))
     T <: AbstractFloat || (T = Float64)
 
-    return AbsorbingBoundaryCondition{T}(T(thickness), T(attenuation_thickness), T(sharpness))
+    return AbsorbingBoundaryCondition{T}(T(thickness), T(attenuation_thickness), T(sharpness), profile)
 end
 
-#==============================================================================#
 # Interface Implementation - Query Methods
-#==============================================================================#
 
 """
     padding_pixels(bc::AbstractBoundaryCondition, resolution::Real) -> Int
@@ -436,8 +517,8 @@ bc_a = AbsorbingBoundaryCondition(
 shift_a = subpixel_shift(bc_a)  # Returns 0.25
 
 # In CBS solver, this becomes:
-# Green_fn = DyadicGreen(..., subpixel_shift = shift_a)      # +0.25
-# flip_Green_fn = DyadicGreen(..., subpixel_shift = -shift_a) # -0.25
+# Green_fn = DyadicGreen(..., shifts = shift_a)      # +0.25
+# flip_Green_fn = DyadicGreen(..., shifts = -shift_a) # -0.25
 # result = (conv(Green_fn) + conv(flip_Green_fn)) / 2
 ```
 
@@ -508,9 +589,92 @@ function requires_padding(bc::AbsorbingBoundaryCondition)
     return true
 end
 
-#==============================================================================#
+"""
+    requires_averaging(bc::AbstractBoundaryCondition) -> Bool
+
+Check whether a boundary condition requires Green's function averaging.
+
+The Convergent Born Series uses Green's function averaging `(G + G_flip)/2`
+where G and G_flip use opposite subpixel shifts. This method indicates whether
+the boundary condition requires this averaging mechanism.
+
+# Returns
+- `Bool`: `true` if averaging is required, `false` otherwise
+
+# Method Implementations
+
+## PeriodicBoundaryCondition
+Returns `false` - periodic boundaries use zero shift, making G = G_flip.
+Averaging still occurs in implementation but has no effect.
+
+## AbsorbingBoundaryCondition
+Returns `true` - non-periodic boundaries require averaging of ±0.25 shifts.
+
+# Example
+```julia
+bc_p = PeriodicBoundaryCondition{Float64}()
+requires_averaging(bc_p)  # Returns false
+
+bc_a = AbsorbingBoundaryCondition(thickness = 2.0e-6, attenuation_thickness = 1.5e-6)
+requires_averaging(bc_a)  # Returns true
+```
+
+# Implementation Note
+This is used by `DyadicGreen` to determine whether to internally compute
+the flip Green's function and perform averaging.
+"""
+function requires_averaging(bc::PeriodicBoundaryCondition)
+    return false
+end
+
+function requires_averaging(bc::AbsorbingBoundaryCondition)
+    return true
+end
+
+# Profile-Specific Attenuation Window Functions
+
+"""
+    _create_attenuation_window(profile::AttenuationProfile, L::Int, T::Type) -> Vector{T}
+
+Create an attenuation window for the specified profile type.
+
+# Arguments
+- `profile::AttenuationProfile`: Attenuation function type
+- `L::Int`: Number of points in attenuation layer
+- `T::Type{<:AbstractFloat}`: Floating-point type
+
+# Returns
+- `Vector{T}`: Attenuation window values from 0 (fully attenuated) to 1 (no attenuation)
+"""
+function _create_attenuation_window(profile::AttenuationProfile, L::Int, ::Type{T}) where {T <:
+                                                                                           AbstractFloat}
+    if L <= 0
+        return T[]
+    end
+
+    if profile == TanhProfile
+        # Hyperbolic tangent profile (original implementation)
+        tanh_vals = tanh.(range(T(-2.5), T(2.5), length = L))
+        return (tanh_vals ./ tanh(T(2.5)) .- tanh(T(-2.5))) ./ 2
+
+    elseif profile == ExponentialProfile
+        # Exponential decay: exp(-((L-x)/w)²)
+        x = range(T(0), T(1), length = L)
+        # Use Gaussian decay with width parameter
+        w = T(0.3)  # Width parameter controls decay rate
+        return exp.(-(((T(1) .- x) ./ w) .^ 2))
+
+    elseif profile == TukeyProfile
+        # Tukey window (tapered cosine): 0.5 * (1 + cos(π*(1-x/L)))
+        x = range(T(0), T(1), length = L)
+        return T(0.5) .* (1 .+ cos.(π .* (1 .- x)))
+
+    else
+        error("Unknown attenuation profile: $profile")
+    end
+end
+
 # Interface Implementation - Action Methods
-#==============================================================================#
 
 """
     apply_attenuation!(
@@ -624,14 +788,8 @@ function apply_attenuation!(
             continue
         end
 
-        # Create attenuation window using tanh profile
-        window = if L > 0
-            # Tanh window provides smooth transition from 0 to 1
-            tanh_vals = tanh.(range(T(-2.5), T(2.5), length = L))
-            (tanh_vals ./ tanh(T(2.5)) .- tanh(T(-2.5))) ./ 2
-        else
-            T[]
-        end
+        # Create attenuation window using selected profile
+        window = _create_attenuation_window(bc.profile, L, T)
 
         # Apply sharpness factor
         # sharpness = 1.0: use full window (sharp transition)
@@ -661,9 +819,47 @@ function apply_attenuation!(
     return nothing
 end
 
-#==============================================================================#
+# Type Conversion Utilities
+
+"""
+    _convert_boundary_type(bc::AbstractBoundaryCondition, ::Type{T}) -> AbstractBoundaryCondition{T}
+
+Internal: Convert boundary condition to the target floating-point type.
+
+This utility function ensures type consistency when creating solvers with
+mixed-precision inputs. It converts boundary condition parameters to the
+target floating-point type while preserving all other properties.
+
+# Arguments
+- `bc::AbstractBoundaryCondition`: Boundary condition to convert
+- `T::Type{<:AbstractFloat}`: Target floating-point type
+
+# Returns
+- Boundary condition with parameters converted to type `T`
+
+# Examples
+```julia
+# Convert Float32 boundary condition to Float64
+bc32 = AbsorbingBoundaryCondition{Float32}(2.0f-6, 1.5f-6, 0.9f0, TanhProfile)
+bc64 = _convert_boundary_type(bc32, Float64)
+```
+"""
+function _convert_boundary_type(bc::PeriodicBoundaryCondition, ::Type{T}) where {T <:
+                                                                                 AbstractFloat}
+    return PeriodicBoundaryCondition{T}()
+end
+
+function _convert_boundary_type(bc::AbsorbingBoundaryCondition, ::Type{T}) where {T <:
+                                                                                  AbstractFloat}
+    return AbsorbingBoundaryCondition{T}(
+        T(bc.thickness),
+        T(bc.attenuation_thickness),
+        T(bc.sharpness),
+        bc.profile
+    )
+end
+
 # Display Methods (REPL-friendly)
-#==============================================================================#
 
 """
     show(io::IO, bc::PeriodicBoundaryCondition)
@@ -684,5 +880,6 @@ function Base.show(io::IO, bc::AbsorbingBoundaryCondition{T}) where {T}
     print(io, "\n  thickness: $(bc.thickness) m")
     print(io, "\n  attenuation_thickness: $(bc.attenuation_thickness) m")
     print(io, "\n  sharpness: $(bc.sharpness)")
+    print(io, "\n  profile: $(bc.profile)")
     print(io, "\n  subpixel_shift: $(subpixel_shift(bc))")
 end

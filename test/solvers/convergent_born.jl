@@ -10,7 +10,8 @@ Tests fundamental solver initialization, configuration, and basic operations.
             wavelength = 532e-9,
             permittivity_bg = 1.333^2,
             resolution = (50e-9, 50e-9, 50e-9),
-            grid_size = (64, 64, 32)
+            grid_size = (64, 64, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Test solver properties
@@ -24,8 +25,11 @@ Tests fundamental solver initialization, configuration, and basic operations.
         @test solver.resolution == (50e-9, 50e-9, 50e-9)
         @test solver.grid_size == (64, 64, 32)
 
+        # Test boundary conditions
+        @test length(solver.boundary_conditions) == 3
+        @test all(bc -> bc isa PeriodicBoundaryCondition, solver.boundary_conditions)
+
         # Test default values
-        @test solver.periodic_boundary == (true, true, false)
         @test solver.tolerance ≈ 1e-6
         @test solver.iterations_max == -1
     end
@@ -37,6 +41,7 @@ Tests fundamental solver initialization, configuration, and basic operations.
             permittivity_bg = 1.5^2,
             resolution = (25e-9, 25e-9, 25e-9),
             grid_size = (32, 32, 16),
+            boundary_conditions = AbsorbingBoundaryCondition(thickness=1e-6, attenuation_thickness=0.8e-6),
             tolerance = 1e-4,
             iterations_max = 50
         )
@@ -61,7 +66,8 @@ Tests fundamental solver initialization, configuration, and basic operations.
             wavelength = 532,  # Int -> Float64
             permittivity_bg = 1.333f0^2,  # Float32
             resolution = (50.0, 50.0, 50.0),  # Float64
-            grid_size = (64, 64, 32)
+            grid_size = (64, 64, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         @test typeof(solver.wavelength) == Float64
@@ -74,7 +80,8 @@ Tests fundamental solver initialization, configuration, and basic operations.
             wavelength = 500e-9,
             permittivity_bg = 1.33^2,
             resolution = (100e-9, 100e-9, 100e-9),
-            grid_size = (32, 32, 16)
+            grid_size = (32, 32, 16),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Test initial state
@@ -94,21 +101,24 @@ Tests fundamental solver initialization, configuration, and basic operations.
             wavelength = -500e-9,  # Invalid: negative wavelength
             permittivity_bg = 1.0,
             resolution = (50e-9, 50e-9, 50e-9),
-            grid_size = (32, 32, 32)
+            grid_size = (32, 32, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         @test_throws ArgumentError ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = -1.0,  # Invalid: negative permittivity
             resolution = (50e-9, 50e-9, 50e-9),
-            grid_size = (32, 32, 32)
+            grid_size = (32, 32, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         @test_throws ArgumentError ConvergentBornSolver(
             wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (-50e-9, 50e-9, 50e-9),  # Invalid: negative resolution
-            grid_size = (32, 32, 32)
+            grid_size = (32, 32, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Test valid construction should work
@@ -116,7 +126,8 @@ Tests fundamental solver initialization, configuration, and basic operations.
             wavelength = 633e-9,
             permittivity_bg = 1.0,  # Vacuum
             resolution = (50e-9, 50e-9, 50e-9),
-            grid_size = (32, 32, 32)
+            grid_size = (32, 32, 32),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Test that solver was created successfully
@@ -129,7 +140,8 @@ Tests fundamental solver initialization, configuration, and basic operations.
             wavelength = 633e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 200e-9),
-            grid_size = (50, 60, 25)
+            grid_size = (50, 60, 25),
+            boundary_conditions = PeriodicBoundaryCondition()
         )
 
         # Test domain size calculation

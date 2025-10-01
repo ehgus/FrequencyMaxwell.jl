@@ -28,6 +28,7 @@ function basic_scattering_example()
         permittivity_bg = 1.333^2,    # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (128, 128, 64),   # 6.4 × 6.4 × 3.2 μm domain
+        boundary_conditions = PeriodicBoundaryCondition(),  # Periodic boundaries
         tolerance = 1e-6,             # Convergence tolerance
         linear_solver = KrylovJL_GMRES()  # Recommended linear algebra algorithm
     )
@@ -99,7 +100,7 @@ function basic_scattering_example()
     println("  Total field energy: $(total_energy) J")
 
     # Extract central plane for analysis
-    z_center = div(config.grid_size[3], 2)
+    z_center = div(solver.grid_size[3], 2)
     central_plane = extract_plane(EMfield, 3, z_center)
     plane_intensity = field_intensity(central_plane)
 
@@ -119,14 +120,15 @@ EMfield, phantom = basic_scattering_example()
 
 ### 1. Solver Configuration
 
-The `ConvergentBornConfig` defines all physical and numerical parameters:
+The `ConvergentBornSolver` defines all physical and numerical parameters:
 
 ```julia
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 532e-9,          # Physical wavelength in vacuum
     permittivity_bg = 1.333^2,    # Background relative permittivity
     resolution = (50e-9, 50e-9, 50e-9),  # Voxel size
     grid_size = (128, 128, 64),   # Number of grid points
+    boundary_conditions = PeriodicBoundaryCondition(),  # Boundary conditions
     tolerance = 1e-6,             # Convergence criterion
     linear_solver = KrylovJL_GMRES()  # Recommended linear algebra algorithm
 )
@@ -137,15 +139,13 @@ config = ConvergentBornConfig(
 - **Resolution**: 50 nm provides ~10 points per wavelength in water
 - **Grid size**: Large enough to contain the object with adequate boundary padding
 - **Background permittivity**: εᵣ = n² = 1.333² ≈ 1.77 for water
+- **Boundary conditions**: Use `PeriodicBoundaryCondition()` for periodic structures or `AbsorbingBoundaryCondition()` for open domains
 
-### 2. Solver Initialization
+### 2. Electromagnetic Solving
 
-```julia
-solver = ConvergentBornSolver(config)
-```
-
-This creates the solver object containing:
-- Preallocated arrays for field computation
+The solver object contains:
+- All configuration parameters directly accessible (e.g., `solver.wavelength`)
+- Preallocated arrays for efficient field computation
 - Green's function operators
 - LinearSolve.jl integration components
 
@@ -153,7 +153,7 @@ This creates the solver object containing:
 
 ```julia
 source = PlaneWaveSource(
-    wavelength = config.wavelength,
+    wavelength = solver.wavelength,
     polarization = [1.0, 0.0, 0.0],  # Linear polarization
     k_vector = [0.0, 0.0, 1.0],      # Propagation direction
     amplitude = 1.0                   # Field amplitude
@@ -169,14 +169,14 @@ source = PlaneWaveSource(
 
 ```julia
 phantom = phantom_bead(
-    config.grid_size,
+    solver.grid_size,
     [1.46^2],         # Relative permittivity of silica
     10.0              # Radius in grid points
 )
 ```
 
 This creates a 3D array with:
-- Background regions: permittivity = 1.0 (will be scaled by config.permittivity_bg)
+- Background regions: permittivity = 1.0 (will be scaled by solver.permittivity_bg)
 - Bead region: permittivity = 1.46² ≈ 2.13
 
 ### 5. Electromagnetic Solving
@@ -187,7 +187,7 @@ EMfield = solve(solver, source, phantom)
 
 The solver:
 1. Generates incident fields from the source
-2. Sets up the linear system (I - G·V)J = G·E_inc
+2. Sets up the linear system (I - G·V)E = G·E_inc
 3. Solves iteratively using the specified linear algebra algorithm
 4. Computes total fields (incident + scattered)
 
@@ -237,14 +237,14 @@ For this configuration, expect:
 
 ```julia
 # High contrast: polystyrene bead
-phantom_ps = phantom_bead(config.grid_size, [1.59^2], 10.0)
+phantom_ps = phantom_bead(solver.grid_size, [1.59^2], 10.0)
 
 # Metallic particle (with loss)
 n_gold = 0.47 + 2.4im  # Gold at 532 nm
-phantom_gold = phantom_bead(config.grid_size, [n_gold^2], 5.0)
+phantom_gold = phantom_bead(solver.grid_size, [n_gold^2], 5.0)
 
 # Biological cell
-phantom_cell = phantom_bead(config.grid_size, [1.38^2], 15.0)
+phantom_cell = phantom_bead(solver.grid_size, [1.38^2], 15.0)
 ```
 
 ### Different Illumination
@@ -271,14 +271,14 @@ source_circular = PlaneWaveSource(
 
 ```julia
 # Create two beads
-phantom_dual = ones(ComplexF64, config.grid_size)
+phantom_dual = ones(ComplexF64, solver.grid_size)
 
 # First bead at offset position
-phantom1 = phantom_bead(config.grid_size, [1.46^2], 8.0)
+phantom1 = phantom_bead(solver.grid_size, [1.46^2], 8.0)
 # Apply offset by manipulating indices...
 
 # Second bead at different position
-phantom2 = phantom_bead(config.grid_size, [1.59^2], 6.0)
+phantom2 = phantom_bead(solver.grid_size, [1.59^2], 6.0)
 # Apply different offset...
 
 # Combine phantoms
@@ -289,16 +289,15 @@ phantom_dual = phantom1 .* (phantom2 .== 1.0) + phantom2 .* (phantom2 .!= 1.0)
 
 ```julia
 # Use Float32 for memory efficiency on large problems
-config_optimized = ConvergentBornConfig{Float32}(
-    wavelength = 532f-9,
-    permittivity_bg = 1.333f0^2,
-    resolution = (50f-9, 50f-9, 50f-9),
+solver_optimized = ConvergentBornSolver(
+    wavelength = 532e-9,
+    permittivity_bg = 1.333^2,
+    resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (256, 256, 128),  # Larger problem
-    tolerance = 1f-6,
+    boundary_conditions = PeriodicBoundaryCondition(),
+    tolerance = 1e-6,
     linear_solver = KrylovJL_GMRES()  # Recommended default
 )
-
-solver_optimized = ConvergentBornSolver(config_optimized)
 # Optimized for large-scale problems
 ```
 
@@ -310,12 +309,13 @@ If the solver doesn't converge:
 
 ```julia
 # Try different linear solver
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     wavelength = 532e-9,
     permittivity_bg = 1.333^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
-    linear_solver = KrylovJL_GMRES()  # Recommended default
+    boundary_conditions = PeriodicBoundaryCondition(),
+    linear_solver = KrylovJL_BICGSTAB(),  # Alternative algorithm
     tolerance = 1e-5               # Relax tolerance
 )
 ```
@@ -325,15 +325,13 @@ config = ConvergentBornConfig(
 For large problems:
 
 ```julia
-# Use Float32 precision
-config = ConvergentBornConfig{Float32}(...)
-
-# Or reduce grid size during development
-config = ConvergentBornConfig(
+# Reduce grid size during development
+solver = ConvergentBornSolver(
     wavelength = 532e-9,
     permittivity_bg = 1.333^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (64, 64, 32),  # Smaller for testing
+    boundary_conditions = PeriodicBoundaryCondition(),
     tolerance = 1e-6
 )
 ```

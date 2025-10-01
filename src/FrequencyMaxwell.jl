@@ -66,6 +66,10 @@ export
       AbstractBoundaryCondition,
       PeriodicBoundaryCondition,
       AbsorbingBoundaryCondition,
+      AttenuationProfile,
+      TanhProfile,
+      ExponentialProfile,
+      TukeyProfile,
 
 # Source types
       PlaneWaveSource,

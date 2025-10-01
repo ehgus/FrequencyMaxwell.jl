@@ -20,4 +20,3 @@ Abstract supertype for all electromagnetic current sources.
 The type parameter `T` specifies the floating-point precision used for calculations.
 """
 abstract type AbstractCurrentSource{T <: AbstractFloat} end
-
