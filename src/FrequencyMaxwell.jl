@@ -62,7 +62,12 @@ export
       ConvergentBornSolver,
       reset!,
 
-# Source types  
+# Boundary condition types
+      AbstractBoundaryCondition,
+      PeriodicBoundaryCondition,
+      AbsorbingBoundaryCondition,
+
+# Source types
       PlaneWaveSource,
       AbstractCurrentSource,
 
@@ -103,6 +108,7 @@ include("sources/abstract_source.jl")
 include("sources/plane_wave.jl")
 include("fields/electromagnetic_field.jl")
 include("geometry/phantoms.jl")
+include("solvers/boundary_conditions.jl")
 include("solvers/convergent_born.jl")
 
 # GPU Backend Registry for conditional loading
