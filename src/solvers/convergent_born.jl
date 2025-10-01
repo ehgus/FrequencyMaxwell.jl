@@ -649,8 +649,8 @@ function _initialize_solver!(
     solver.permittivity = Complex{T}.(permittivity)
 
     # Compute potential V = k²(ε/ε_bg - 1) with proper padding
-    k = T(2π) * sqrt(solver.permittivity_bg) / solver.wavelength
-    potential_unpadded = Complex{T}.(k^2 *
+    k_bg_medium = T(2π) * sqrt(solver.permittivity_bg) / solver.wavelength
+    potential_unpadded = Complex{T}.(k_bg_medium^2 *
                                      (permittivity ./ solver.permittivity_bg .-
                                       1))
 
@@ -671,10 +671,12 @@ function _initialize_solver!(
     # Apply field attenuation directly to potential (optimized to avoid storing masks)
     _apply_attenuation_to_potential!(solver)
 
+    # Transfer potential to device
+    solver.potential_device = to_device(solver.backend, solver.potential)
+
     # Calculate optimal iteration count if automatic
     if solver.iterations_max < 0
-        k0_nm = T(2π) * sqrt(solver.permittivity_bg) / solver.wavelength
-        steps = abs(2 * k0_nm / solver.eps_imag)
+        steps = abs(2 * k_bg_medium / solver.eps_imag)
         domain_extent = norm(size(solver.potential)[1:3] .* solver.resolution)
         Bornmax_opt = ceil(Int, domain_extent / steps / 2 + 1) * 2
         solver.Bornmax = Bornmax_opt * abs(solver.iterations_max)
@@ -683,49 +685,15 @@ function _initialize_solver!(
     end
 
     # Initialize Green's function
-    solver.Green_function = _compute_green_function(solver)
+    k_square = k_bg_medium^2 + Complex{T}(0, solver.eps_imag)
+    solver.Green_function = DyadicGreen(
+        solver.potential_device, k_square, solver.resolution, solver.boundary_conditions)
 
     # Reset iteration tracking
     solver.iteration_count = 0
     empty!(solver.residual_history)
 
-    # Transfer potential to device
-    solver.potential_device = to_device(solver.backend, solver.potential)
-
     return nothing
-end
-
-"""
-    _compute_green_function(solver::ConvergentBornSolver) -> DyadicGreen
-
-Compute the dyadic Green's function for the given configuration with internalized flip averaging.
-
-The returned Green's function automatically handles (G + G_flip)/2 averaging based on
-boundary conditions via the `use_averaging` field.
-"""
-function _compute_green_function(solver::ConvergentBornSolver{T}) where {T}
-    # Calculate wave number in background medium
-    k0_nm = T(2π) * sqrt(solver.permittivity_bg) / solver.wavelength
-    k_square = k0_nm^2 + Complex{T}(0, solver.eps_imag)
-
-    # Array size includes boundary padding
-    arr_size = size(solver.potential)
-
-    # Extract subpixel shifts from boundary conditions
-    shifts = ntuple(3) do i
-        subpixel_shift(solver.boundary_conditions[i])
-    end
-
-    # Determine if averaging is required (any dimension needs it)
-    use_averaging = any(requires_averaging, solver.boundary_conditions)
-
-    # Create single dyadic Green's function (handles flip averaging internally)
-    array_type = typeof(solver.potential) <: Array ? Array :
-                 typeof(solver.potential).name.wrapper
-    Green_fn = DyadicGreen(
-        array_type, k_square, arr_size, solver.resolution, shifts, use_averaging)
-
-    return Green_fn
 end
 
 """

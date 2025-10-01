@@ -90,8 +90,10 @@ Tests the boundary condition abstraction and its integration with solvers.
         )
 
         # Should return thickness / (resolution * 2)
-        @test FrequencyMaxwell.padding_pixels(bc_absorbing, 50e-9) == round(Int, 2.0e-6 / (50e-9 * 2))
-        @test FrequencyMaxwell.padding_pixels(bc_absorbing, 100e-9) == round(Int, 2.0e-6 / (100e-9 * 2))
+        @test FrequencyMaxwell.padding_pixels(bc_absorbing, 50e-9) ==
+              round(Int, 2.0e-6 / (50e-9 * 2))
+        @test FrequencyMaxwell.padding_pixels(bc_absorbing, 100e-9) ==
+              round(Int, 2.0e-6 / (100e-9 * 2))
     end
 
     @testset "subpixel_shift Interface" begin

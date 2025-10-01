@@ -41,7 +41,7 @@ Tests fundamental solver initialization, configuration, and basic operations.
             permittivity_bg = 1.5^2,
             resolution = (25e-9, 25e-9, 25e-9),
             grid_size = (32, 32, 16),
-            boundary_conditions = AbsorbingBoundaryCondition(thickness=1e-6, attenuation_thickness=0.8e-6),
+            boundary_conditions = AbsorbingBoundaryCondition(thickness = 1e-6, attenuation_thickness = 0.8e-6),
             tolerance = 1e-4,
             iterations_max = 50
         )

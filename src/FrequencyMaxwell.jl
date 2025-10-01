@@ -106,13 +106,13 @@ export
 
 # Include submodules in correct order (dependencies first)
 include("core/types.jl")
+include("solvers/boundary_conditions.jl")
 include("core/dyadic_green.jl")
 include("core/curl.jl")
 include("sources/abstract_source.jl")
 include("sources/plane_wave.jl")
 include("fields/electromagnetic_field.jl")
 include("geometry/phantoms.jl")
-include("solvers/boundary_conditions.jl")
 include("solvers/convergent_born.jl")
 
 # GPU Backend Registry for conditional loading

@@ -516,10 +516,6 @@ bc_a = AbsorbingBoundaryCondition(
 )
 shift_a = subpixel_shift(bc_a)  # Returns 0.25
 
-# In CBS solver, this becomes:
-# Green_fn = DyadicGreen(..., shifts = shift_a)      # +0.25
-# flip_Green_fn = DyadicGreen(..., shifts = -shift_a) # -0.25
-# result = (conv(Green_fn) + conv(flip_Green_fn)) / 2
 ```
 
 # Implementation Note
