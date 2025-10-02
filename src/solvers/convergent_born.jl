@@ -99,7 +99,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     backend::Backend  # Cached KernelAbstractions.jl backend
     Green_function::Union{Nothing, DyadicGreen{T}}
     ROI::NTuple{6, Int}  # Region of interest bounds
-    eps_imag::T  # Imaginary part for convergence
     Bornmax::Int  # Actual number of iterations to use
     iteration_count::Int
     residual_history::Vector{T}
@@ -143,7 +142,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             backend,  # KernelAbstractions.jl backend (cached)
             nothing,  # Green_function - computed lazily (handles flip internally)
             ROI,
-            T(0),     # eps_imag - calculated based on potential
             0,        # Bornmax - calculated automatically
             0,        # iteration_count
             T[],      # residual_history
@@ -361,7 +359,6 @@ where the original system R*(1-G*V*)x = R*y is reformulated.
 
 # Fields
 - `potential_device::AbstractArray`: Device-resident potential array
-- `eps_imag::T`: Imaginary regularization parameter
 
 # Interface
 Implements LinearSolve.jl preconditioner interface with `ldiv!` methods.
@@ -654,8 +651,7 @@ function _initialize_solver!(
     solver.Green_function = DyadicGreen(
         potential_device, k_square, solver.resolution, solver.boundary_conditions)
 
-    # Update eps_imag and Bornmax in solver (still used for tracking)
-    solver.eps_imag = eps_imag
+    # Update Bornmax in solver (still used for tracking)
     solver.Bornmax = Bornmax
 
     # Reset iteration tracking
