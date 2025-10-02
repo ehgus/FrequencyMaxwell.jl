@@ -145,10 +145,10 @@ using FrequencyMaxwell, Zygote
 
 # Define an objective function for inverse design
 function objective(phantom_params)
-    phantom = phantom_bead(config.grid_size, phantom_params, 16.0)
+    phantom = phantom_bead(solver.grid_size, phantom_params, 16.0)
     Efield, Hfield = solve(solver, source, phantom)
-    fields = ElectromagneticField(Efield, Hfield, config.grid_size, 
-                                 config.resolution, source.wavelength)
+    fields = ElectromagneticField(Efield, Hfield, solver.grid_size, 
+                                 solver.resolution, source.wavelength)
     return field_energy(fields)  # Minimize total energy
 end
 
@@ -224,18 +224,16 @@ Typical performance characteristics:
 
 ```julia
 # High-resolution microscopy simulation
-config = ConvergentBornConfig(
-    wavelength = 488e-9,           # Blue laser
+solver = ConvergentBornSolver(
     permittivity_bg = 1.515^2,     # Oil immersion medium
     resolution = (25e-9, 25e-9, 50e-9),  # Anisotropic resolution
     grid_size = (256, 256, 128)
 )
 
 # Multiple bead phantom
-phantom = phantom_bead(config.grid_size, [1.45^2, 1.6^2], [20.0, 15.0], num_bead=5)
+phantom = phantom_bead(solver.grid_size, [1.45^2, 1.6^2], [20.0, 15.0], num_bead=5)
 
-solver = ConvergentBornSolver(config)
-source = PlaneWaveSource(wavelength=config.wavelength, 
+source = PlaneWaveSource(wavelength=488e-9,           # Blue laser 
                         polarization=[1.0, 0.0, 0.0])
 
 Efield, Hfield = solve(solver, source, phantom)
@@ -249,10 +247,11 @@ using Optim
 
 function characterize_material(measured_intensity)
     function cost(permittivity)
-        phantom = phantom_cylinder(config.grid_size, permittivity[1], 25.0)
+        wavelength=488e-9
+        phantom = phantom_cylinder(solver.grid_size, permittivity[1], 25.0)
         Efield, Hfield = solve(solver, source, phantom)
         computed_intensity = field_intensity(ElectromagneticField(
-            Efield, Hfield, config.grid_size, config.resolution, config.wavelength))
+            Efield, Hfield, solver.grid_size, solver.resolution, wavelength))
         return norm(computed_intensity - measured_intensity)^2
     end
     

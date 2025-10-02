@@ -6,10 +6,10 @@ FrequencyMaxwell.jl provides utilities for creating material distributions (phan
 
 In electromagnetic simulation, a phantom is a 3D array representing the spatial distribution of material properties. FrequencyMaxwell.jl uses relative permittivity phantoms where:
 
-- **Background**: Regions with `permittivity_bg` (defined in configuration)
+- **Background**: Regions with `permittivity_bg` (defined in solver)
 - **Objects**: Regions with different permittivity values creating scattering
 
-The phantom array has the same dimensions as the computational grid defined in `ConvergentBornConfig`.
+The phantom array has the same dimensions as the computational grid defined in `ConvergentBornSolver`.
 
 ## Built-in Phantom Generators
 
@@ -30,20 +30,20 @@ phantom = phantom_bead(grid_size, permittivity_values, radius)
 
 ```julia
 # Single bead with n=1.5 (polystyrene-like)
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     grid_size = (128, 128, 64),
     # ... other parameters
 )
 
 phantom_single = phantom_bead(
-    config.grid_size,
+    solver.grid_size,
     [1.5^2],  # Relative permittivity (n² = 2.25)
     16.0      # 16 grid points radius
 )
 
 # Multiple concentric beads (core-shell structure)
 phantom_coreshell = phantom_bead(
-    config.grid_size,
+    solver.grid_size,
     [1.8^2, 1.4^2],  # Core: n=1.8, Shell: n=1.4
     [8.0, 16.0]      # Inner radius: 8, Outer radius: 16
 )
@@ -68,7 +68,7 @@ phantom = phantom_plate(grid_size, permittivity_values, thickness, orientation)
 ```julia
 # Thin plate perpendicular to z-axis (xy-plane)
 phantom_plate_z = phantom_plate(
-    config.grid_size,
+    solver.grid_size,
     [1.6^2],  # Glass-like material
     8.0,      # 8 grid points thick
     :z        # Normal along z-axis
@@ -76,7 +76,7 @@ phantom_plate_z = phantom_plate(
 
 # Thick slab perpendicular to x-axis
 phantom_slab_x = phantom_plate(
-    config.grid_size,
+    solver.grid_size,
     [2.0^2],  # High index material
     32.0,     # 32 grid points thick
     :x        # Normal along x-axis
@@ -103,7 +103,7 @@ phantom = phantom_cylinder(grid_size, permittivity_values, radius, height, orien
 ```julia
 # Cylinder along z-axis (fiber-like)
 phantom_fiber = phantom_cylinder(
-    config.grid_size,
+    solver.grid_size,
     [1.45^2],  # Optical fiber core
     12.0,      # 12 grid points radius
     48.0,      # 48 grid points height
@@ -112,7 +112,7 @@ phantom_fiber = phantom_cylinder(
 
 # Short cylinder along x-axis
 phantom_rod = phantom_cylinder(
-    config.grid_size,
+    solver.grid_size,
     [1.7^2],   # High index rod
     8.0,       # 8 grid points radius
     24.0,      # 24 grid points length
@@ -132,7 +132,7 @@ Phantoms use a grid-based coordinate system where:
 ### Physical Size Calculations
 
 ```julia
-config = ConvergentBornConfig(
+solver = ConvergentBornSolver(
     grid_size = (128, 128, 64),
     resolution = (50e-9, 50e-9, 50e-9),  # 50 nm voxels
     # ... other parameters
@@ -140,9 +140,9 @@ config = ConvergentBornConfig(
 
 # Bead with 800 nm diameter (16 grid points radius)
 radius_points = 16.0
-radius_physical = radius_points * config.resolution[1]  # 800e-9 m
+radius_physical = radius_points * solver.resolution[1]  # 800e-9 m
 
-phantom = phantom_bead(config.grid_size, [1.5^2], radius_points)
+phantom = phantom_bead(solver.grid_size, [1.5^2], radius_points)
 ```
 
 ### Material Properties
@@ -173,7 +173,7 @@ n_real = 1.5
 n_imag = 0.1  # Absorption
 ε_complex = (n_real + 1im * n_imag)^2
 
-phantom = phantom_bead(config.grid_size, [ε_complex], 16.0)
+phantom = phantom_bead(solver.grid_size, [ε_complex], 16.0)
 ```
 
 ## Advanced Phantom Creation
@@ -205,7 +205,7 @@ function custom_phantom(grid_size, config)
     return phantom
 end
 
-phantom = custom_phantom(config.grid_size, config)
+phantom = custom_phantom(solver.grid_size, config)
 ```
 
 ### Combining Phantoms
@@ -214,14 +214,14 @@ Combine multiple phantom geometries:
 
 ```julia
 # Create base phantom
-phantom = ones(ComplexF64, config.grid_size)
+phantom = ones(ComplexF64, solver.grid_size)
 
 # Add bead
-bead = phantom_bead(config.grid_size, [1.5^2], 16.0)
+bead = phantom_bead(solver.grid_size, [1.5^2], 16.0)
 phantom .= phantom .* (bead .== 1.0) + bead .* (bead .!= 1.0)
 
 # Add plate
-plate = phantom_plate(config.grid_size, [1.8^2], 4.0, :z)
+plate = phantom_plate(solver.grid_size, [1.8^2], 4.0, :z)
 phantom .= phantom .* (plate .== 1.0) + plate .* (plate .!= 1.0)
 ```
 
@@ -252,7 +252,7 @@ Validate phantom properties before simulation:
 ```julia
 function validate_phantom(phantom, config)
     # Check dimensions
-    if size(phantom) != config.grid_size
+    if size(phantom) != solver.grid_size
         error("Phantom size mismatch")
     end
 
@@ -287,7 +287,7 @@ Large phantoms consume significant memory:
 
 ```julia
 # Float64 phantom memory usage
-nx, ny, nz = config.grid_size
+nx, ny, nz = solver.grid_size
 memory_gb = nx * ny * nz * 16 / 1e9  # 16 bytes per Complex{Float64}
 println("Phantom memory: $(memory_gb) GB")
 
@@ -302,7 +302,7 @@ Choose appropriate resolution for phantom features:
 ```julia
 # Ensure features are adequately sampled
 feature_size_physical = 200e-9  # 200 nm feature
-voxel_size = config.resolution[1]
+voxel_size = solver.resolution[1]
 points_per_feature = feature_size_physical / voxel_size
 
 if points_per_feature < 4
@@ -318,7 +318,7 @@ Very high contrast phantoms may cause convergence issues:
 
 ```julia
 # Calculate contrast
-background_perm = config.permittivity_bg
+background_perm = solver.permittivity_bg
 max_contrast = maximum(real(phantom)) / background_perm
 
 if max_contrast > 4.0
@@ -348,11 +348,11 @@ Extract 2D cross-sections for visualization:
 
 ```julia
 # Extract central xy-plane
-z_center = div(config.grid_size[3], 2)
+z_center = div(solver.grid_size[3], 2)
 phantom_xy = phantom[:, :, z_center]
 
 # Extract central xz-plane
-y_center = div(config.grid_size[2], 2)
+y_center = div(solver.grid_size[2], 2)
 phantom_xz = phantom[:, y_center, :]
 ```
 
@@ -367,7 +367,7 @@ function phantom_statistics(phantom, config)
     std_perm = std(real(phantom))
 
     # Contrast statistics
-    background = config.permittivity_bg
+    background = solver.permittivity_bg
     contrast = real(phantom) ./ background
     max_contrast = maximum(contrast)
     min_contrast = minimum(contrast)
@@ -412,7 +412,7 @@ end
 
 # Typical cell parameters
 cell = cell_phantom(
-    config.grid_size,
+    solver.grid_size,
     1.38^2,  # Nucleus: n=1.38
     1.36^2,  # Cytoplasm: n=1.36
     20.0,    # Cell radius: 20 grid points
@@ -441,7 +441,7 @@ function waveguide_phantom(grid_size, core_permittivity, cladding_permittivity,
 end
 
 waveguide = waveguide_phantom(
-    config.grid_size,
+    solver.grid_size,
     1.45^2,  # Core: n=1.45
     1.44^2,  # Cladding: n=1.44
     8,       # Core width: 8 grid points
