@@ -46,14 +46,16 @@ source = PlaneWaveSource(
 )
 
 # Step 3: Generate material distribution (dielectric bead)
-permittivity_phantom = phantom_bead(
-    solver.grid_size,     # grid dimensions
-    [1.5^2],              # permittivity of bead (n = 1.5)
-    16.0                  # radius in grid points
+# phantom_bead returns a Medium object containing permittivity and background
+medium = phantom_bead(
+    solver.grid_size,           # grid dimensions
+    [1.5^2],                    # permittivity of bead (n = 1.5)
+    16.0,                       # radius in grid points
+    permittivity_bg = 1.33^2    # water background
 )
 
 # Step 4: Solve the electromagnetic problem
-EMfield = solve(solver, source, permittivity_phantom)
+EMfield = solve(solver, source, medium)
 
 # Step 5: Analyze results
 println("Electric field dimensions: ", size(EMfield.E))

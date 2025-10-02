@@ -74,6 +74,10 @@ export
       PlaneWaveSource,
       AbstractCurrentSource,
 
+# Medium types
+      AbstractMedium,
+      Medium,
+
 # Core functions
       solve,
 
@@ -98,6 +102,11 @@ export
       generate_incident_field,
       pad_electromagnetic_field,
 
+# Medium utilities
+      permittivity,
+      permittivity_bg,
+      grid_size,
+
 # GPU Backend utilities
       is_backend_available
 
@@ -110,7 +119,8 @@ include("sources/abstract_source.jl")
 include("sources/plane_wave.jl")
 include("fields/electromagnetic_field.jl")
 include("sources/field_generation.jl")
-include("geometry/phantoms.jl")
+include("medium/types.jl")
+include("medium/phantoms.jl")
 include("solvers/convergent_born.jl")
 
 # GPU Backend Registry for conditional loading

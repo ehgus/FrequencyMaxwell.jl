@@ -87,7 +87,6 @@ This eliminates hardcoded boundary logic and enables flexible boundary configura
 mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
                AbstractElectromagneticSolver{T}
     # Configuration fields
-    permittivity_bg::T
     resolution::NTuple{3, T}
     grid_size::NTuple{3, Int}
     boundary_conditions::NTuple{3, AbstractBoundaryCondition{T}}
@@ -99,9 +98,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     # Solver state fields
     backend::Backend  # Cached KernelAbstractions.jl backend
     Green_function::Union{Nothing, DyadicGreen{T}}
-    potential::Union{Nothing, AbstractArray}  # V = k²(ε/ε_bg - 1) with padding
-    potential_device::Union{Nothing, AbstractArray}  # Device-resident potential
-    permittivity::Union{Nothing, AbstractArray}  # Original permittivity without padding
     ROI::NTuple{6, Int}  # Region of interest bounds
     eps_imag::T  # Imaginary part for convergence
     Bornmax::Int  # Actual number of iterations to use
@@ -110,7 +106,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     solver_state::Any  # LinearSolve.jl solver state
 
     function ConvergentBornSolver{T}(
-            permittivity_bg::T,
             resolution::NTuple{3, T},
             grid_size::NTuple{3, Int},
             boundary_conditions::NTuple{3, AbstractBoundaryCondition{T}},
@@ -121,7 +116,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             backend::Backend
     ) where {T <: AbstractFloat}
         # Validate parameters
-        permittivity_bg > 0 || throw(ArgumentError("permittivity_bg must be positive"))
         all(resolution .> 0) ||
             throw(ArgumentError("all resolution components must be positive"))
         all(grid_size .> 0) ||
@@ -142,15 +136,12 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
 
         new{T}(
             # Configuration fields
-            permittivity_bg, resolution, grid_size,
+            resolution, grid_size,
             boundary_conditions,  # NEW: Store boundary conditions directly
             iterations_max, tolerance, linear_solver, preconditioner,
             # Solver state fields
             backend,  # KernelAbstractions.jl backend (cached)
             nothing,  # Green_function - computed lazily (handles flip internally)
-            nothing,  # potential - set during solve
-            nothing,  # potential_device - set during solve
-            nothing,  # permittivity - set during solve
             ROI,
             T(0),     # eps_imag - calculated based on potential
             0,        # Bornmax - calculated automatically
@@ -214,7 +205,6 @@ solver = ConvergentBornSolver(
 ```
 """
 function ConvergentBornSolver(;
-        permittivity_bg::Real = 1.0,
         resolution::NTuple{3, Real},
         grid_size::NTuple{3, Int},
         boundary_conditions,  # Accept any tuple or single boundary condition
@@ -225,7 +215,6 @@ function ConvergentBornSolver(;
         device::Symbol = :cpu)
     # Determine floating-point type from inputs (promote to highest precision)
     T = promote_type(
-        typeof(float(permittivity_bg)),
         typeof(float(first(resolution))),
         typeof(float(tolerance))
     )
@@ -248,7 +237,6 @@ function ConvergentBornSolver(;
 
     # Call internal constructor with converted types
     return ConvergentBornSolver{T}(
-        T(permittivity_bg),
         T.(resolution),
         grid_size,
         bcs,
@@ -372,16 +360,21 @@ The CBS linear system becomes: (1-G*V*)x = y with left preconditioner R
 where the original system R*(1-G*V*)x = R*y is reformulated.
 
 # Fields
-- `solver::ConvergentBornSolver{T}`: Reference to the CBS solver containing potential
+- `potential_device::AbstractArray`: Device-resident potential array
+- `eps_imag::T`: Imaginary regularization parameter
 
 # Interface
 Implements LinearSolve.jl preconditioner interface with `ldiv!` methods.
 """
-struct CBSPreconditioner{T <: AbstractFloat}
-    solver::ConvergentBornSolver{T}
+struct CBSPreconditioner{T <: AbstractFloat, A <: AbstractArray}
+    potential_device::A
+    eps_imag::T
 
-    function CBSPreconditioner(solver::ConvergentBornSolver{T}) where {T}
-        new{T}(solver)
+    function CBSPreconditioner(
+            potential_device::A,
+            eps_imag::T
+    ) where {T <: AbstractFloat, A <: AbstractArray}
+        new{T, A}(potential_device, eps_imag)
     end
 end
 
@@ -394,14 +387,14 @@ This method implements the LinearSolve.jl preconditioner interface.
 """
 function LinearAlgebra.ldiv!(y, P::CBSPreconditioner{T}, x) where {T}
     # Reshape flattened input to 4D field array
-    potential = P.solver.potential_device
+    potential = P.potential_device
     field_shape = (size(potential)..., 3)
     x_field = reshape(x, field_shape)
     y_field = reshape(y, field_shape)
 
     # Apply preconditioner: R * x = (1i/ε_imag) * potential .* x
     y_field .= potential .* x_field
-    y_field .*= (Complex{T}(0, 1) / P.solver.eps_imag)
+    y_field .*= (Complex{T}(0, 1) / P.eps_imag)
 
     return y
 end
@@ -415,13 +408,13 @@ This method implements the in-place LinearSolve.jl preconditioner interface.
 """
 function LinearAlgebra.ldiv!(P::CBSPreconditioner{T}, x) where {T}
     # Reshape flattened input to 4D field array
-    potential = P.solver.potential_device
+    potential = P.potential_device
     field_shape = (size(potential)..., 3)
     x_field = reshape(x, field_shape)
 
     # Apply preconditioner: R * x = (1i/ε_imag) * potential .* x
     x_field .*= potential
-    x_field .*= (Complex{T}(0, 1) / P.solver.eps_imag)
+    x_field .*= (Complex{T}(0, 1) / P.eps_imag)
 
     # No need to copy back since we modified x_field which is a view of x
     return x
@@ -443,18 +436,23 @@ The preconditioner R = (1i/ε_imag) * potential is applied separately through Li
 
 # Fields
 - `solver::ConvergentBornSolver{T}`: Reference to the CBS solver
+- `potential_device::AbstractArray`: Device-resident potential array
 - `temp_array::AbstractArray`: Preallocated temporary 4D field array for efficiency
 """
 struct CBSLinearOperator{T <: AbstractFloat}
     solver::ConvergentBornSolver{T}
-    temp_array::AbstractArray  # Preallocated temporary 4D field array
+    potential_device
+    temp_array
 
-    function CBSLinearOperator(solver::ConvergentBornSolver{T}) where {T}
+    function CBSLinearOperator(
+            solver::ConvergentBornSolver{T},
+            potential_device::AbstractArray
+    ) where {T <: AbstractFloat}
         # Preallocate temporary array to match field dimensions
-        field_size = size(solver.potential)
+        field_size = size(potential_device)
         temp_array = KernelAbstractions.zeros(solver.backend, Complex{T}, field_size..., 3)
 
-        new{T}(solver, temp_array)
+        new{T}(solver, potential_device, temp_array)
     end
 end
 
@@ -473,7 +471,7 @@ The preconditioner R = (1i/ε_imag) * potential is applied separately through Li
 """
 function (op::CBSLinearOperator{T})(y, x, p, t; α = 1, β = 0) where {T}
     solver = op.solver
-    potential = solver.potential_device
+    potential = op.potential_device
     psi = op.temp_array
 
     # Reshape flattened input to 4D field array
@@ -510,24 +508,13 @@ Base.eltype(::CBSLinearOperator{T}) where {T} = Complex{T}
 Base.ndims(::CBSLinearOperator) = 2  # Matrix-like operator
 
 """
-    solve(solver::ConvergentBornSolver, sources, permittivity::AbstractArray)
+    solve(solver::ConvergentBornSolver{T},
+          sources::Union{AbstractCurrentSource{T}, Vector{<:AbstractCurrentSource{T}}},
+          medium::AbstractMedium{T}) where {T <: AbstractFloat}
 
-Solve the electromagnetic scattering problem using the Convergent Born method.
+Solve electromagnetic scattering problem using Convergent Born Series method with Medium.
 
-This unified method handles both single sources and multiple coherent sources using Julia's
-multiple dispatch. For multiple sources, they interfere coherently in the same simulation
-domain, enabling applications like beam splitting, interference patterns, and complex scattering.
-
-# Arguments
-- `solver::ConvergentBornSolver`: Pre-configured solver instance
-- `sources`: Either an `AbstractCurrentSource` (single) or `Vector{<:AbstractCurrentSource}` (multiple)
-- `permittivity::AbstractArray{T, 3}`: 3D permittivity distribution
-
-# Returns
-- `EMfield::ElectromagneticField`: Electromagnetic field structure containing E and H fields
-
-# Algorithm
-The method solves the electromagnetic scattering equation:
+The CBS method solves the electromagnetic scattering equation iteratively:
 ```
 ψ = ψ_incident + G * V * ψ
 ```
@@ -535,46 +522,65 @@ where:
 - ψ: total field
 - ψ_incident: incident field from source(s) - coherent superposition for multiple sources
 - G: dyadic Green's function
-- V: potential (permittivity contrast)
+- V: potential (permittivity contrast from Medium)
 
 For multiple sources, incident fields are coherently superposed: E_incident = Σ E_i
 
+# Arguments
+- `solver::ConvergentBornSolver{T}`: Configured solver
+- `sources`: Single source or vector of sources (coherent superposition)
+- `medium::AbstractMedium{T}`: Medium object containing permittivity distribution and background
+
+# Returns
+- `EMfield::ElectromagneticField`: Total electromagnetic field (incident + scattered)
+
 # Examples
 ```julia
+# Create medium with phantom
+medium = phantom_bead(
+    (128, 128, 64),
+    [1.5^2],
+    8.0,
+    permittivity_bg = 1.33^2
+)
+
 # Single source
-EMfield = solve(solver, source, permittivity)
+EMfield = solve(solver, source, medium)
 
 # Multi-source (coherent interference)
 sources = [source1, source2, source3]
-EMfield = solve(solver, sources, permittivity)
+EMfield = solve(solver, sources, medium)
 ```
 """
 function LinearSolve.solve(
         solver::ConvergentBornSolver{T},
         sources::Union{AbstractCurrentSource{T}, Vector{<:AbstractCurrentSource{T}}},
-        permittivity::AbstractArray{<:Number, 3}
+        medium::AbstractMedium{T}
 ) where {T <: AbstractFloat}
 
-    # Validate input dimensions
-    size(permittivity) == solver.grid_size ||
-        throw(ArgumentError("permittivity size $(size(permittivity)) must match grid_size $(solver.grid_size)"))
+    # Validate medium dimensions
+    grid_size(medium) == solver.grid_size ||
+        throw(ArgumentError("medium grid_size $(grid_size(medium)) must match solver grid_size $(solver.grid_size)"))
 
     # Initialize solver state (computes potential V with proper padding)
     wavelength = source_wavelength(sources)
-    _initialize_solver!(solver, permittivity, wavelength)
+    potential, potential_device, eps_imag, Bornmax =
+        _initialize_solver!(solver, medium, wavelength)
 
-    # Generate incident field
-    incident_field = generate_incident_field(sources, solver)
+    # Generate incident field with background permittivity
+    incident_field = generate_incident_field(sources, solver,
+        permittivity_bg = permittivity_bg(medium))
 
     # Generate source term: V * E_incident + i*eps_imag * E_incident
-    source_term = solver.potential .* incident_field.E .+
-                  Complex{T}(0, solver.eps_imag) .* incident_field.E
+    source_term = potential .* incident_field.E .+
+                  Complex{T}(0, eps_imag) .* incident_field.E
 
     # Transfer source term to device
     source_term = to_device(solver.backend, source_term)
 
     # Solve scattering equation using CBS algorithm
-    scattered_field = _solve_cbs_scattering(solver, source_term, wavelength)
+    scattered_field = _solve_cbs_scattering(
+        solver, source_term, potential_device, eps_imag, Bornmax, wavelength)
 
     # Transfer to host, add incident field, and crop to ROI
     total_field = to_host(scattered_field) + incident_field
@@ -584,73 +590,79 @@ function LinearSolve.solve(
 end
 
 """
-    _initialize_solver!(solver::ConvergentBornSolver, permittivity::AbstractArray)
+    _initialize_solver!(solver::ConvergentBornSolver, medium::AbstractMedium, wavelength::Number)
 
-Initialize solver internal state for a new problem.
+Initialize solver internal state for a new problem using a Medium object.
 
 This function prepares the solver for electromagnetic scattering calculations by:
-1. Computing the potential V = k²(ε/ε_bg - 1) with proper boundary padding
-2. Adding imaginary regularization for convergence stability  
+1. Computing the potential V = k²(ε/ε_bg - 1) from Medium with proper boundary padding
+2. Adding imaginary regularization for convergence stability
 3. Creating field attenuation masks for boundary condition enforcement
 4. Pre-applying attenuation masks to the potential (optimization)
 5. Computing optimal iteration count and initializing Green's functions
 
 The potential pre-masking optimization ensures that subsequent field operations
 automatically include boundary attenuation without redundant mask applications.
+
+Returns: (potential, potential_device, eps_imag, Bornmax)
 """
 function _initialize_solver!(
         solver::ConvergentBornSolver{T},
-        permittivity::AbstractArray{<:Number, 3},
+        medium::AbstractMedium{T},
         wavelength::Number
 ) where {T <: AbstractFloat}
 
-    # Store original permittivity
-    solver.permittivity = Complex{T}.(permittivity)
+    # Extract medium properties
+    perm = permittivity(medium)
+    perm_bg = permittivity_bg(medium)
 
     # Compute potential V = k²(ε/ε_bg - 1) with proper padding
-    k_bg_medium = T(2π) * sqrt(solver.permittivity_bg) / wavelength
+    k_bg_medium = T(2π) * sqrt(T(perm_bg)) / wavelength
     potential_unpadded = Complex{T}.(k_bg_medium^2 *
-                                     (permittivity ./ solver.permittivity_bg .-
-                                      1))
+                                     (perm ./ T(perm_bg) .- 1))
 
     # Pad the potential (replicate boundary values)
     boundary_thickness_pixel = ntuple(3) do i
         padding_pixels(solver.boundary_conditions[i], solver.resolution[i])
     end
-    solver.potential = _pad_array(potential_unpadded, boundary_thickness_pixel, :replicate)
+    potential = _pad_array(potential_unpadded, boundary_thickness_pixel, :replicate)
 
     # Calculate eps_imag based on maximum potential value for numerical stability
-    solver.eps_imag = max(T(2^-20), maximum(abs.(solver.potential)) * T(1.01))
+    eps_imag = max(T(2^-20), maximum(abs.(potential)) * T(1.01))
 
     # Add imaginary part to potential for convergence
-    solver.potential .-= Complex{T}(0, solver.eps_imag)
+    potential .-= Complex{T}(0, eps_imag)
 
     # Apply field attenuation directly to potential (optimized to avoid storing masks)
-    _apply_attenuation_to_potential!(solver)
+    _apply_attenuation_to_potential!(solver, potential)
 
     # Transfer potential to device
-    solver.potential_device = to_device(solver.backend, solver.potential)
+    potential_device = to_device(solver.backend, potential)
 
     # Calculate optimal iteration count if automatic
     if solver.iterations_max < 0
-        steps = abs(2 * k_bg_medium / solver.eps_imag)
-        domain_extent = norm(size(solver.potential)[1:3] .* solver.resolution)
+        steps = abs(2 * k_bg_medium / eps_imag)
+        domain_extent = norm(size(potential)[1:3] .* solver.resolution)
         Bornmax_opt = ceil(Int, domain_extent / steps / 2 + 1) * 2
-        solver.Bornmax = Bornmax_opt * abs(solver.iterations_max)
+        Bornmax = Bornmax_opt * abs(solver.iterations_max)
     else
-        solver.Bornmax = solver.iterations_max
+        Bornmax = solver.iterations_max
     end
 
     # Initialize Green's function
-    k_square = k_bg_medium^2 + Complex{T}(0, solver.eps_imag)
+    k_square = k_bg_medium^2 + Complex{T}(0, eps_imag)
     solver.Green_function = DyadicGreen(
-        solver.potential_device, k_square, solver.resolution, solver.boundary_conditions)
+        potential_device, k_square, solver.resolution, solver.boundary_conditions)
+
+    # Update eps_imag and Bornmax in solver (still used for tracking)
+    solver.eps_imag = eps_imag
+    solver.Bornmax = Bornmax
 
     # Reset iteration tracking
     solver.iteration_count = 0
     empty!(solver.residual_history)
 
-    return nothing
+    return (potential, potential_device, eps_imag, Bornmax)
 end
 
 """
@@ -682,6 +694,9 @@ and leverages the user-configured LinearSolver algorithm for efficient solution.
 function _solve_cbs_scattering(
         solver::ConvergentBornSolver{T},
         source::AbstractArray{Complex{T}, 4},
+        potential_device::AbstractArray{Complex{T}, 3},
+        eps_imag::T,
+        Bornmax::Int,
         wavelength::Number
 ) where {T <: AbstractFloat}
 
@@ -690,7 +705,7 @@ function _solve_cbs_scattering(
     Green_fn = solver.Green_function
     psi = KernelAbstractions.zeros(solver.backend, Complex{T}, size_field)
 
-    if solver.Bornmax >= 1
+    if Bornmax >= 1
         # Compute Field_0: first iteration of CBS without R preconditioner
         # Field_0 = (G + G_flip)/2 * source
         psi .= source
@@ -704,10 +719,10 @@ function _solve_cbs_scattering(
         x0_vec = copy(vec(psi))  # Initial guess: use first CBS iteration
 
         # Create linear operator
-        linear_op = CBSLinearOperator(solver)
+        linear_op = CBSLinearOperator(solver, potential_device)
 
         # Create CBS preconditioner R = (1i/ε_imag) * potential
-        preconditioner = CBSPreconditioner(solver)
+        preconditioner = CBSPreconditioner(potential_device, eps_imag)
 
         # Create linear problem
         prob = LinearProblem(linear_op, rhs_vec; u0 = x0_vec)
@@ -719,7 +734,7 @@ function _solve_cbs_scattering(
         solver_options = Dict{Symbol, Any}(
             :reltol => solver.tolerance,
             :abstol => solver.tolerance * 1e-2,
-            :maxiters => max(solver.Bornmax * 2, 100)  # More flexible iteration limit
+            :maxiters => max(Bornmax * 2, 100)  # More flexible iteration limit
         )
 
         # Solve linear system
@@ -746,7 +761,7 @@ function _solve_cbs_scattering(
     Hfield = _compute_magnetic_field(solver, Efield, wavelength)
 
     # Get padded grid size from potential
-    padded_grid_size = size(solver.potential)
+    padded_grid_size = size(Efield)[1:3]
 
     # Return ElectromagneticField (device-resident)
     return ElectromagneticField(Efield, Hfield, padded_grid_size, solver.resolution, wavelength)
@@ -767,8 +782,8 @@ function _compute_magnetic_field(
 ) where {T <: AbstractFloat}
 
     # Create curl operator for field with padding
-    array_type = typeof(solver.potential)
-    curl_op = Curl(array_type, T, size(solver.potential), solver.resolution)
+    array_type = typeof(Efield)
+    curl_op = Curl(array_type, T, size(Efield)[1:3], solver.resolution)
 
     # Compute curl of E field
     Hfield = conv(curl_op, Efield)
@@ -863,14 +878,17 @@ function _replicate_boundaries_4d!(
 end
 
 """
-    _apply_attenuation_to_potential!(solver)
+    _apply_attenuation_to_potential!(solver, potential)
 
-Apply field attenuation masks to the solver's potential dimension-by-dimension.
+Apply field attenuation masks to the potential dimension-by-dimension.
 
 Each boundary condition applies attenuation along its corresponding dimension.
 This allows mixed boundary types (e.g., periodic in x,y and absorbing in z).
 """
-function _apply_attenuation_to_potential!(solver::ConvergentBornSolver{T}) where {T}
+function _apply_attenuation_to_potential!(
+        solver::ConvergentBornSolver{T},
+        potential::AbstractArray{Complex{T}, 3}
+) where {T}
     # Apply attenuation dimension-by-dimension using boundary condition logic
     for dim in 1:3
         bc = solver.boundary_conditions[dim]
@@ -883,7 +901,7 @@ function _apply_attenuation_to_potential!(solver::ConvergentBornSolver{T}) where
         # For absorbing boundaries, apply attenuation along this dimension
         if bc isa AbsorbingBoundaryCondition
             max_L = padding_pixels(bc, solver.resolution[dim])
-            attenuation_pixel = round(Int, bc.attenuation_thickness / (resolution[i] * 2))
+            attenuation_pixel = round(Int, bc.attenuation_thickness / (solver.resolution[dim] * 2))
             L = min(max_L, attenuation_pixel)
 
             if max_L == 0
@@ -908,11 +926,11 @@ function _apply_attenuation_to_potential!(solver::ConvergentBornSolver{T}) where
 
             # Apply mask directly to potential along the specified dimension
             if dim == 1
-                solver.potential .*= reshape(filter_1d, :, 1, 1)
+                potential .*= reshape(filter_1d, :, 1, 1)
             elseif dim == 2
-                solver.potential .*= reshape(filter_1d, 1, :, 1)
+                potential .*= reshape(filter_1d, 1, :, 1)
             else  # dim == 3
-                solver.potential .*= reshape(filter_1d, 1, 1, :)
+                potential .*= reshape(filter_1d, 1, 1, :)
             end
         end
     end
@@ -940,8 +958,6 @@ end
 Reset solver state for a new problem while preserving configuration.
 """
 function reset!(solver::ConvergentBornSolver)
-    solver.potential = nothing
-    solver.permittivity = nothing
     solver.iteration_count = 0
     empty!(solver.residual_history)
     solver.solver_state = nothing
@@ -955,7 +971,6 @@ Custom display for solver objects with status information.
 """
 function Base.show(io::IO, solver::ConvergentBornSolver{T}) where {T}
     print(io, "ConvergentBornSolver{$T}:")
-    print(io, "\n  permittivity_bg: $(solver.permittivity_bg)")
     print(io, "\n  resolution: $(solver.resolution)")
     print(io, "\n  grid_size: $(solver.grid_size)")
     print(io, "\n  domain_size: $(domain_size(solver))")

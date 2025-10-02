@@ -46,7 +46,6 @@ function test_two_beam_interference_homogeneous()
     )
 
     solver = ConvergentBornSolver(
-        permittivity_bg = 1.333^2,     # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (201, 201, 191),   # Matching MATLAB grid
         boundary_conditions = (        # Periodic in XY, absorbing in Z
@@ -60,36 +59,35 @@ function test_two_beam_interference_homogeneous()
     )
 
     println("✓ Solver configured with:")
-    println("  Background permittivity: $(solver.permittivity_bg)")
     println("  Grid size: $(solver.grid_size)")
     println("  Domain size: $(domain_size(solver) .* 1e6) μm")
-
+    permittivity_bg = 1.333^2     # Water background (n=1.333)
     # Create two-beam sources (matching MATLAB illum_order = 3)
     illum_order = 3
     wavelength = 532e-9 # 532 nm
-    k_bg = T(2π) * sqrt(solver.permittivity_bg) / wavelength
+    k_bg = 2π * sqrt(permittivity_bg) / wavelength
     ky = 2π * illum_order / (solver.grid_size[2] * solver.resolution[2])
 
     # Calculate propagation angle
-    angle = asin(ky / k_bg)
+    beam_angle = asin(ky / k_bg)
 
     println("✓ Two-beam configuration:")
     println("  Illumination order: $(illum_order)")
     println("  Horizontal k-vector: ±$(ky) rad/m")
-    println("  Beam angle: ±$(rad2deg(angle))°")
+    println("  Beam angle: ±$(rad2deg(beam_angle))°")
 
     # Create plane wave sources with opposite horizontal angles
     source1 = PlaneWaveSource(
         wavelength = 532e-9,           # 532 nm
         polarization = [1.0, 0.0, 0.0],  # X-polarized
-        k_vector = [0.0, sin(angle), cos(angle)],  # +angle beam
+        k_vector = [0.0, sin(beam_angle), cos(beam_angle)],  # +angle beam
         amplitude = 1.0
     )
 
     source2 = PlaneWaveSource(
         wavelength = 532e-9,           # 532 nm
         polarization = [1.0, 0.0, 0.0],  # X-polarized
-        k_vector = [0.0, -sin(angle), cos(angle)], # -angle beam
+        k_vector = [0.0, -sin(beam_angle), cos(beam_angle)], # -angle beam
         amplitude = 1.0
     )
 
@@ -98,14 +96,15 @@ function test_two_beam_interference_homogeneous()
     println("✓ Sources created:")
 
     # Homogeneous medium (water everywhere)
-    permittivity = fill(solver.permittivity_bg, solver.grid_size)
+    permittivity = fill(Complex{Float64}(permittivity_bg), solver.grid_size)
+    medium = Medium(permittivity, permittivity_bg)
 
-    println("✓ Homogeneous medium: ε = $(solver.permittivity_bg)")
+    println("✓ Homogeneous medium: ε = $(permittivity_bg(medium))")
 
     # Solve multi-source electromagnetic problem
     println("\n--- Solving Multi-Source CBS Problem ---")
     t_start = time()
-    EMfield = solve(solver, sources, permittivity)
+    EMfield = solve(solver, sources, medium)
     t_solve = time() - t_start
 
     println("✓ Multi-source solve completed in $(t_solve) seconds")

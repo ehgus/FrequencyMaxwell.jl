@@ -7,51 +7,50 @@ and performance optimization.
 """
 
 """
-    phantom_bead(grid_size::NTuple{3, Int}, 
-                 permittivity_profile::AbstractVector{<:Number}, 
+    phantom_bead(grid_size::NTuple{3, Int},
+                 permittivity_profile::AbstractVector{<:Number},
                  pixel_radius::Real;
-                 num_bead::Int = 1,
+                 permittivity_bg::Real = 1.0,
                  bead_distance::Real = 2 * pixel_radius,
-                 array_type::Type{<:AbstractArray} = Array) -> AbstractArray{Complex{T}, 3}
+                 array_type::Type{<:AbstractArray} = Array) -> Medium{T}
 
-Generate a phantom containing spherical beads with specified permittivity.
+Generate a phantom medium containing spherical beads with specified permittivity.
 
-This function creates a 3D permittivity distribution containing one or more
-spherical scatterers (beads) with specified optical properties.
+This function creates a Medium object with a 3D permittivity distribution containing
+one or more spherical scatterers (beads) with specified optical properties.
 
 # Arguments
 - `grid_size::NTuple{3, Int}`: Grid dimensions (Nx, Ny, Nz)
 - `permittivity_profile::AbstractVector{<:Number}`: Permittivity values for each bead
 - `pixel_radius::Real`: Bead radius in grid pixels
-- `num_bead::Int = 1`: Number of beads to generate
+- `permittivity_bg::Real = 1.0`: Background permittivity (default: vacuum/air)
 - `bead_distance::Real = 2 * pixel_radius`: Distance between bead centers (for multiple beads)
 - `array_type::Type{<:AbstractArray} = Array`: Array type for output (CPU/GPU flexibility)
 
 # Returns
-- `phantom::AbstractArray{Complex{T}, 3}`: 3D permittivity distribution
+- `medium::Medium{T}`: Medium object containing the permittivity distribution and background
 
 # Algorithm
 - Beads are placed along the Z-axis with specified spacing
 - Each bead gets a permittivity value from `permittivity_profile` (cycling if needed)
-- Background permittivity is 1.0 (vacuum/air)
 - Spherical geometry: distance from bead center ≤ radius
 
 # Example
 ```julia
-# Single high-index bead
-phantom = phantom_bead(
+# Single high-index bead in water
+medium = phantom_bead(
     (128, 128, 64),           # Grid size
     [1.5^2],                  # n = 1.5 refractive index
     8.0,                      # 8-pixel radius
-    num_bead = 1
+    permittivity_bg = 1.33^2  # Water background
 )
 
 # Multiple beads with different indices
-phantom = phantom_bead(
+medium = phantom_bead(
     (256, 256, 128),
     [1.3^2, 1.6^2, 1.4^2],    # Different materials
     10.0,                     # 10-pixel radius
-    num_bead = 5,             # 5 beads total
+    permittivity_bg = 1.0,    # Vacuum background
     bead_distance = 25.0      # 25-pixel spacing
 )
 ```
@@ -60,6 +59,7 @@ function phantom_bead(
         grid_size::NTuple{3, Int},
         permittivity_profile::AbstractVector{<:Number},
         pixel_radius::Real;
+        permittivity_bg::Real = 1.0,
         bead_distance::Real = 2 * pixel_radius,
         array_type::Type{<:AbstractArray} = Array
 )
@@ -68,14 +68,16 @@ function phantom_bead(
     pixel_radius > 0 || throw(ArgumentError("pixel_radius must be positive"))
     !isempty(permittivity_profile) ||
         throw(ArgumentError("permittivity_profile cannot be empty"))
+    permittivity_bg > 0 || throw(ArgumentError("permittivity_bg must be positive"))
     num_bead = length(permittivity_profile)
 
     # Determine output type
-    T = real(eltype(promote_type(eltype(permittivity_profile), typeof(pixel_radius))))
+    T = real(eltype(promote_type(eltype(permittivity_profile), typeof(pixel_radius),
+        typeof(permittivity_bg))))
     T <: AbstractFloat || (T = Float64)
 
     # Initialize phantom with background permittivity
-    phantom = array_type(ones(Complex{T}, grid_size))
+    phantom = array_type(ones(Complex{T}, grid_size) .* Complex{T}(permittivity_bg))
 
     # Calculate grid center
     center = ntuple(i -> (grid_size[i] + 1) / 2, 3)
@@ -100,50 +102,53 @@ function phantom_bead(
         _fill_sphere!(phantom, bead_center, pixel_radius, bead_permittivity)
     end
 
-    return phantom
+    return Medium(phantom, T(permittivity_bg))
 end
 
 """
     phantom_plate(grid_size::NTuple{3, Int},
                   permittivity_profile::AbstractVector{<:Number},
                   thickness_pixel::Real;
+                  permittivity_bg::Real = 1.0,
                   plate_normal::Int = 3,
-                  array_type::Type{<:AbstractArray} = Array) -> AbstractArray{Complex{T}, 3}
+                  array_type::Type{<:AbstractArray} = Array) -> Medium{T}
 
-Generate a phantom containing a flat plate with specified permittivity.
+Generate a phantom medium containing a flat plate with specified permittivity.
 
-This function creates a 3D permittivity distribution containing a flat plate
-(slab) of specified thickness and optical properties.
+This function creates a Medium object with a 3D permittivity distribution containing
+a flat plate (slab) of specified thickness and optical properties.
 
 # Arguments
 - `grid_size::NTuple{3, Int}`: Grid dimensions (Nx, Ny, Nz)
 - `permittivity_profile::AbstractVector{<:Number}`: Permittivity values (typically length 1)
 - `thickness_pixel::Real`: Plate thickness in grid pixels
+- `permittivity_bg::Real = 1.0`: Background permittivity (default: vacuum/air)
 - `plate_normal::Int = 3`: Normal direction (1=X, 2=Y, 3=Z)
 - `array_type::Type{<:AbstractArray} = Array`: Array type for output
 
 # Returns
-- `phantom::AbstractArray{Complex{T}, 3}`: 3D permittivity distribution
+- `medium::Medium{T}`: Medium object containing the permittivity distribution and background
 
 # Algorithm
 - Plate is centered in the grid along the normal direction
 - Extends fully in the two perpendicular directions
-- Background permittivity is 1.0
 
 # Example
 ```julia
-# Glass plate in Z direction
-phantom = phantom_plate(
+# Glass plate in Z direction with air background
+medium = phantom_plate(
     (128, 128, 64),           # Grid size
-    [1.5^2],                  # Glass permittivity  
-    8.0                       # 8-pixel thickness
+    [1.5^2],                  # Glass permittivity
+    8.0,                      # 8-pixel thickness
+    permittivity_bg = 1.0     # Air background
 )
 
-# Thin film in Y direction
-phantom = phantom_plate(
+# Thin film in Y direction with water background
+medium = phantom_plate(
     (256, 128, 256),
     [2.1^2],                  # High-index material
     4.0,                      # 4-pixel thickness
+    permittivity_bg = 1.33^2, # Water background
     plate_normal = 2          # Y-normal
 )
 ```
@@ -152,6 +157,7 @@ function phantom_plate(
         grid_size::NTuple{3, Int},
         permittivity_profile::AbstractVector{<:Number},
         thickness_pixel::Real;
+        permittivity_bg::Real = 1.0,
         plate_normal::Int = 3,
         array_type::Type{<:AbstractArray} = Array
 )
@@ -161,13 +167,15 @@ function phantom_plate(
     1 ≤ plate_normal ≤ 3 || throw(ArgumentError("plate_normal must be 1, 2, or 3"))
     !isempty(permittivity_profile) ||
         throw(ArgumentError("permittivity_profile cannot be empty"))
+    permittivity_bg > 0 || throw(ArgumentError("permittivity_bg must be positive"))
 
     # Determine output type
-    T = real(eltype(promote_type(eltype(permittivity_profile), typeof(thickness_pixel))))
+    T = real(eltype(promote_type(eltype(permittivity_profile), typeof(thickness_pixel),
+        typeof(permittivity_bg))))
     T <: AbstractFloat || (T = Float64)
 
     # Initialize phantom with background permittivity
-    phantom = array_type(ones(Complex{T}, grid_size))
+    phantom = array_type(ones(Complex{T}, grid_size) .* Complex{T}(permittivity_bg))
 
     # Get plate permittivity (use first value from profile)
     plate_permittivity = Complex{T}(permittivity_profile[1])
@@ -187,7 +195,7 @@ function phantom_plate(
         phantom[:, :, start_pos:end_pos] .= plate_permittivity
     end
 
-    return phantom
+    return Medium(phantom, T(permittivity_bg))
 end
 
 """
@@ -242,27 +250,30 @@ end
     phantom_cylinder(grid_size::NTuple{3, Int},
                      permittivity_profile::AbstractVector{<:Number},
                      radius_pixel::Real;
+                     permittivity_bg::Real = 1.0,
                      height_pixel::Real = 2 * radius_pixel,
                      axis::Int = 3,
-                     array_type::Type{<:AbstractArray} = Array) -> AbstractArray{Complex{T}, 3}
+                     array_type::Type{<:AbstractArray} = Array) -> Medium{T}
 
-Generate a phantom containing a cylindrical scatterer.
+Generate a phantom medium containing a cylindrical scatterer.
 
 # Arguments
 - `grid_size::NTuple{3, Int}`: Grid dimensions
 - `permittivity_profile::AbstractVector{<:Number}`: Cylinder permittivity values (typically length 1)
 - `radius_pixel::Real`: Cylinder radius in pixels
-- `height_pixel::Real = 2 * radius_pixel`: Cylinder height in pixels  
+- `permittivity_bg::Real = 1.0`: Background permittivity (default: vacuum/air)
+- `height_pixel::Real = 2 * radius_pixel`: Cylinder height in pixels
 - `axis::Int = 3`: Cylinder axis direction (1=X, 2=Y, 3=Z)
 - `array_type::Type{<:AbstractArray} = Array`: Array type for output
 
 # Returns
-- `phantom::AbstractArray{Complex{T}, 3}`: 3D permittivity distribution
+- `medium::Medium{T}`: Medium object containing the permittivity distribution and background
 """
 function phantom_cylinder(
         grid_size::NTuple{3, Int},
         permittivity_profile::AbstractVector{<:Number},
         radius_pixel::Real;
+        permittivity_bg::Real = 1.0,
         height_pixel::Real = 2 * radius_pixel,
         axis::Int = 3,
         array_type::Type{<:AbstractArray} = Array
@@ -274,13 +285,15 @@ function phantom_cylinder(
     1 ≤ axis ≤ 3 || throw(ArgumentError("axis must be 1, 2, or 3"))
     !isempty(permittivity_profile) ||
         throw(ArgumentError("permittivity_profile cannot be empty"))
+    permittivity_bg > 0 || throw(ArgumentError("permittivity_bg must be positive"))
 
     # Determine output type
-    T = real(eltype(promote_type(eltype(permittivity_profile), typeof(radius_pixel))))
+    T = real(eltype(promote_type(eltype(permittivity_profile), typeof(radius_pixel),
+        typeof(permittivity_bg))))
     T <: AbstractFloat || (T = Float64)
 
-    # Initialize phantom
-    phantom = array_type(ones(Complex{T}, grid_size))
+    # Initialize phantom with background permittivity
+    phantom = array_type(ones(Complex{T}, grid_size) .* Complex{T}(permittivity_bg))
 
     # Get cylinder permittivity (use first value from profile)
     cyl_permittivity = Complex{T}(permittivity_profile[1])
@@ -297,7 +310,7 @@ function phantom_cylinder(
     _fill_cylinder!(
         phantom, center, radius_pixel, axis_start, axis_end, axis, cyl_permittivity)
 
-    return phantom
+    return Medium(phantom, T(permittivity_bg))
 end
 function _fill_cylinder!(
         phantom::AbstractArray{Complex{T}, 3},

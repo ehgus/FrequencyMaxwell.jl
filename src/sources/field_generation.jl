@@ -41,7 +41,8 @@ E_incident = incident_field.E  # Already on padded grid with interference
 """
 function generate_incident_field(
         sources::Vector{<:AbstractCurrentSource{T}},
-        solver
+        solver;
+        permittivity_bg::Real = 1.0
 ) where {T <: AbstractFloat}
     # Check for empty sources vector
     isempty(sources) && throw(ArgumentError("sources vector cannot be empty"))
@@ -60,12 +61,14 @@ function generate_incident_field(
     end
 
     # Generate field from first source (establishes grid size)
-    total_field = generate_incident_field(sources[1], solver)
+    total_field = generate_incident_field(sources[1], solver,
+        permittivity_bg = permittivity_bg)
 
     # Sum contributions from remaining sources (coherent superposition)
     for i in 2:length(sources)
         # Generate field for this source (already on padded grid)
-        incident_field = generate_incident_field(sources[i], solver)
+        incident_field = generate_incident_field(sources[i], solver,
+            permittivity_bg = permittivity_bg)
 
         # Coherent addition using ElectromagneticField + operator
         total_field = total_field + incident_field

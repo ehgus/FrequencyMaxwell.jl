@@ -125,6 +125,22 @@ Get the wavelength of the plane wave source.
 source_wavelength(source::PlaneWaveSource) = source.wavelength
 
 """
+    source_wavelength(sources::Vector{<:PlaneWaveSource}) -> T
+
+Get the wavelength from multiple sources (all must have the same wavelength).
+"""
+function source_wavelength(sources::Vector{<:PlaneWaveSource})
+    wavelength = sources[1].wavelength
+    # Verify all sources have the same wavelength
+    for src in sources[2:end]
+        if src.wavelength != wavelength
+            throw(ArgumentError("All sources must have the same wavelength for coherent superposition"))
+        end
+    end
+    return wavelength
+end
+
+"""
     cross(a::SVector{3}, b::SVector{3}) -> SVector{3}
 
 Cross product for 3D static vectors.
@@ -181,13 +197,13 @@ E_array = incident_field.E  # Access electric field array (padded)
 """
 function generate_incident_field(
         source::PlaneWaveSource{T},
-        solver
+        solver;
+        permittivity_bg::Real = 1.0
 ) where {T <: AbstractFloat}
 
     # Extract grid parameters from solver
     grid_size = solver.grid_size  # Original computational grid
     resolution = solver.resolution
-    permittivity_bg = solver.permittivity_bg
     padding = ntuple(3) do i
         padding_pixels(solver.boundary_conditions[i], resolution[i])
     end

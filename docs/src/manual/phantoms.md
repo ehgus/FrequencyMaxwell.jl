@@ -4,119 +4,93 @@ FrequencyMaxwell.jl provides utilities for creating material distributions (phan
 
 ## Overview
 
-In electromagnetic simulation, a phantom is a 3D array representing the spatial distribution of material properties. FrequencyMaxwell.jl uses relative permittivity phantoms where:
+In electromagnetic simulation, a phantom represents the spatial distribution of material properties. FrequencyMaxwell.jl uses the `Medium` type to encapsulate both the permittivity distribution and background permittivity:
 
-- **Background**: Regions with `permittivity_bg` (defined in solver)
+- **Medium object**: Contains both the 3D permittivity array and the background permittivity value
+- **Background**: Regions with `permittivity_bg`
 - **Objects**: Regions with different permittivity values creating scattering
 
-The phantom array has the same dimensions as the computational grid defined in `ConvergentBornSolver`.
+The phantom's permittivity array has the same dimensions as the computational grid defined in `ConvergentBornSolver`. All built-in phantom generators return `Medium` objects ready for use with the solver.
 
 ## Built-in Phantom Generators
 
 ### phantom_bead
 
-Creates a spherical dielectric bead centered in the computational domain.
+Creates a spherical dielectric bead centered in the computational domain, returning a `Medium` object.
 
 ```julia
-phantom = phantom_bead(grid_size, permittivity_values, radius)
+medium = phantom_bead(grid_size, permittivity_values, radius; permittivity_bg=1.0)
 ```
 
 **Parameters**:
 - `grid_size`: `NTuple{3, Int}` - Grid dimensions (nx, ny, nz)
 - `permittivity_values`: `Vector` - Permittivity values for each bead
 - `radius`: `Real` - Radius in grid points
+- `permittivity_bg`: `Real` - Background permittivity (keyword argument)
+
+**Returns**: `Medium` object containing the permittivity distribution and background
 
 **Examples**:
 
 ```julia
-# Single bead with n=1.5 (polystyrene-like)
+# Single bead with n=1.5 (polystyrene-like) in water
 solver = ConvergentBornSolver(
     grid_size = (128, 128, 64),
     # ... other parameters
 )
 
-phantom_single = phantom_bead(
+medium = phantom_bead(
     solver.grid_size,
-    [1.5^2],  # Relative permittivity (n² = 2.25)
-    16.0      # 16 grid points radius
+    [1.5^2],              # Relative permittivity (n² = 2.25)
+    16.0,                 # 16 grid points radius
+    permittivity_bg = 1.33^2  # Water background
 )
 
+# Use directly with solver
+EMfield = solve(solver, source, medium)
+
 # Multiple concentric beads (core-shell structure)
-phantom_coreshell = phantom_bead(
+medium_coreshell = phantom_bead(
     solver.grid_size,
-    [1.8^2, 1.4^2],  # Core: n=1.8, Shell: n=1.4
-    [8.0, 16.0]      # Inner radius: 8, Outer radius: 16
+    [1.8^2, 1.4^2],      # Core: n=1.8, Shell: n=1.4
+    [8.0, 16.0],         # Inner radius: 8, Outer radius: 16
+    permittivity_bg = 1.0
 )
 ```
 
 ### phantom_plate
 
-Creates a flat plate or slab geometry.
+Creates a flat plate or slab geometry, returning a `Medium` object.
 
 ```julia
-phantom = phantom_plate(grid_size, permittivity_values, thickness, orientation)
+medium = phantom_plate(grid_size, permittivity_values, thickness; permittivity_bg=1.0)
 ```
 
 **Parameters**:
 - `grid_size`: `NTuple{3, Int}` - Grid dimensions
 - `permittivity_values`: `Vector` - Permittivity values
 - `thickness`: `Real` - Thickness in grid points
-- `orientation`: `Symbol` - `:x`, `:y`, or `:z` for plate normal direction
+- `permittivity_bg`: `Real` - Background permittivity (keyword argument)
+
+**Returns**: `Medium` object containing the permittivity distribution and background
 
 **Examples**:
 
 ```julia
-# Thin plate perpendicular to z-axis (xy-plane)
-phantom_plate_z = phantom_plate(
+# Thin plate in water
+medium_plate = phantom_plate(
     solver.grid_size,
-    [1.6^2],  # Glass-like material
-    8.0,      # 8 grid points thick
-    :z        # Normal along z-axis
+    [1.6^2],              # Glass-like material
+    8.0,                  # 8 grid points thick
+    permittivity_bg = 1.33^2
 )
 
-# Thick slab perpendicular to x-axis
-phantom_slab_x = phantom_plate(
+# Thick slab in vacuum
+medium_slab = phantom_plate(
     solver.grid_size,
-    [2.0^2],  # High index material
-    32.0,     # 32 grid points thick
-    :x        # Normal along x-axis
-)
-```
-
-### phantom_cylinder
-
-Creates a cylindrical geometry.
-
-```julia
-phantom = phantom_cylinder(grid_size, permittivity_values, radius, height, orientation)
-```
-
-**Parameters**:
-- `grid_size`: `NTuple{3, Int}` - Grid dimensions
-- `permittivity_values`: `Vector` - Permittivity values
-- `radius`: `Real` - Cylinder radius in grid points
-- `height`: `Real` - Cylinder height in grid points
-- `orientation`: `Symbol` - `:x`, `:y`, or `:z` for cylinder axis direction
-
-**Examples**:
-
-```julia
-# Cylinder along z-axis (fiber-like)
-phantom_fiber = phantom_cylinder(
-    solver.grid_size,
-    [1.45^2],  # Optical fiber core
-    12.0,      # 12 grid points radius
-    48.0,      # 48 grid points height
-    :z         # Axis along z
-)
-
-# Short cylinder along x-axis
-phantom_rod = phantom_cylinder(
-    solver.grid_size,
-    [1.7^2],   # High index rod
-    8.0,       # 8 grid points radius
-    24.0,      # 24 grid points length
-    :x         # Axis along x
+    [2.0^2],              # High index material
+    32.0,                 # 32 grid points thick
+    permittivity_bg = 1.0
 )
 ```
 
@@ -142,7 +116,12 @@ solver = ConvergentBornSolver(
 radius_points = 16.0
 radius_physical = radius_points * solver.resolution[1]  # 800e-9 m
 
-phantom = phantom_bead(solver.grid_size, [1.5^2], radius_points)
+medium = phantom_bead(
+    solver.grid_size,
+    [1.5^2],
+    radius_points,
+    permittivity_bg = 1.33^2
+)
 ```
 
 ### Material Properties
@@ -173,18 +152,24 @@ n_real = 1.5
 n_imag = 0.1  # Absorption
 ε_complex = (n_real + 1im * n_imag)^2
 
-phantom = phantom_bead(solver.grid_size, [ε_complex], 16.0)
+medium = phantom_bead(
+    solver.grid_size,
+    [ε_complex],
+    16.0,
+    permittivity_bg = 1.33^2
+)
 ```
 
 ## Advanced Phantom Creation
 
 ### Custom Phantom Generation
 
-Create custom phantoms using direct array manipulation:
+Create custom phantoms using direct array manipulation and wrap them in a `Medium`:
 
 ```julia
-function custom_phantom(grid_size, config)
-    phantom = ones(ComplexF64, grid_size)  # Background permittivity = 1.0
+function custom_phantom(grid_size, permittivity_bg)
+    # Create permittivity array
+    perm_array = fill(Complex{Float64}(permittivity_bg), grid_size)
 
     # Get grid coordinates
     nx, ny, nz = grid_size
@@ -198,67 +183,87 @@ function custom_phantom(grid_size, config)
 
         # Example: Graded index structure
         if r < 20.0
-            phantom[i, j, k] = 1.5^2 * (1 - 0.1 * r/20.0)
+            perm_array[i, j, k] = 1.5^2 * (1 - 0.1 * r/20.0)
         end
     end
 
-    return phantom
+    # Wrap in Medium object
+    return Medium(perm_array, permittivity_bg)
 end
 
-phantom = custom_phantom(solver.grid_size, config)
+medium = custom_phantom(solver.grid_size, 1.33^2)
+EMfield = solve(solver, source, medium)
 ```
 
 ### Combining Phantoms
 
-Combine multiple phantom geometries:
+Combine multiple phantom geometries by extracting and combining their permittivity arrays:
 
 ```julia
-# Create base phantom
-phantom = ones(ComplexF64, solver.grid_size)
+using FrequencyMaxwell: permittivity
+
+# Start with background
+permittivity_bg = 1.33^2
+perm_combined = fill(Complex{Float64}(permittivity_bg), solver.grid_size)
 
 # Add bead
-bead = phantom_bead(solver.grid_size, [1.5^2], 16.0)
-phantom .= phantom .* (bead .== 1.0) + bead .* (bead .!= 1.0)
+medium_bead = phantom_bead(solver.grid_size, [1.5^2], 16.0, permittivity_bg=permittivity_bg)
+perm_bead = permittivity(medium_bead)
+mask_bead = abs.(perm_bead .- permittivity_bg) .> 1e-10
+perm_combined[mask_bead] .= perm_bead[mask_bead]
 
 # Add plate
-plate = phantom_plate(solver.grid_size, [1.8^2], 4.0, :z)
-phantom .= phantom .* (plate .== 1.0) + plate .* (plate .!= 1.0)
+medium_plate = phantom_plate(solver.grid_size, [1.8^2], 4.0, permittivity_bg=permittivity_bg)
+perm_plate = permittivity(medium_plate)
+mask_plate = abs.(perm_plate .- permittivity_bg) .> 1e-10
+perm_combined[mask_plate] .= perm_plate[mask_plate]
+
+# Create final Medium
+medium_combined = Medium(perm_combined, permittivity_bg)
 ```
 
 ### Importing External Phantoms
 
-Load phantoms from external sources:
+Load phantoms from external sources and wrap them in Medium objects:
 
 ```julia
 using HDF5  # Or other file format libraries
 
 # Load from HDF5 file
-function load_phantom(filename, dataset_name)
-    h5open(filename, "r") do file
-        phantom = read(file, dataset_name)
-        return Complex.(phantom)  # Ensure complex type
+function load_phantom_medium(filename, dataset_name, permittivity_bg)
+    perm_array = h5open(filename, "r") do file
+        data = read(file, dataset_name)
+        return Complex{Float64}.(data)  # Ensure complex type
     end
+
+    return Medium(perm_array, permittivity_bg)
 end
 
-phantom = load_phantom("my_phantom.h5", "permittivity")
+medium = load_phantom_medium("my_phantom.h5", "permittivity", 1.33^2)
+EMfield = solve(solver, source, medium)
 ```
 
 ## Validation and Best Practices
 
 ### Phantom Validation
 
-Validate phantom properties before simulation:
+Validate Medium properties before simulation:
 
 ```julia
-function validate_phantom(phantom, config)
+using FrequencyMaxwell: permittivity, grid_size
+
+function validate_medium(medium, solver)
     # Check dimensions
-    if size(phantom) != solver.grid_size
-        error("Phantom size mismatch")
+    if grid_size(medium) != solver.grid_size
+        error("Medium size mismatch: got $(grid_size(medium)), expected $(solver.grid_size)")
     end
 
+    # Get permittivity array
+    perm = permittivity(medium)
+
     # Check for reasonable permittivity values
-    max_perm = maximum(real(phantom))
-    min_perm = minimum(real(phantom))
+    max_perm = maximum(real(perm))
+    min_perm = minimum(real(perm))
 
     if max_perm > 20.0
         @warn "Very high permittivity detected: $max_perm"
@@ -269,14 +274,14 @@ function validate_phantom(phantom, config)
     end
 
     # Check for NaN or Inf values
-    if any(!isfinite.(phantom))
-        error("Phantom contains NaN or Inf values")
+    if any(!isfinite.(perm))
+        error("Medium contains NaN or Inf values")
     end
 
     return true
 end
 
-validate_phantom(phantom, config)
+validate_medium(medium, solver)
 ```
 
 ### Performance Considerations
@@ -392,31 +397,39 @@ phantom_statistics(phantom, config)
 ### Biological Cells
 
 ```julia
+using FrequencyMaxwell: permittivity
+
 # Cell-like phantom (nucleus + cytoplasm)
-function cell_phantom(grid_size, nucleus_permittivity, cytoplasm_permittivity,
-                     cell_radius, nucleus_radius)
-    phantom = ones(ComplexF64, grid_size)
+function cell_phantom_medium(grid_size, nucleus_permittivity, cytoplasm_permittivity,
+                            cell_radius, nucleus_radius, permittivity_bg)
+    # Start with background
+    perm_array = fill(Complex{Float64}(permittivity_bg), grid_size)
 
-    # Cell body
-    cell = phantom_bead(grid_size, [cytoplasm_permittivity], cell_radius)
+    # Add cell body
+    cell = phantom_bead(grid_size, [cytoplasm_permittivity], cell_radius,
+                       permittivity_bg=permittivity_bg)
+    perm_cell = permittivity(cell)
+    mask_cell = abs.(perm_cell .- permittivity_bg) .> 1e-10
+    perm_array[mask_cell] .= perm_cell[mask_cell]
 
-    # Nucleus
-    nucleus = phantom_bead(grid_size, [nucleus_permittivity], nucleus_radius)
+    # Add nucleus (overwrites cell center)
+    nucleus = phantom_bead(grid_size, [nucleus_permittivity], nucleus_radius,
+                          permittivity_bg=permittivity_bg)
+    perm_nucleus = permittivity(nucleus)
+    mask_nucleus = abs.(perm_nucleus .- permittivity_bg) .> 1e-10
+    perm_array[mask_nucleus] .= perm_nucleus[mask_nucleus]
 
-    # Combine
-    phantom .= phantom .* (cell .== 1.0) + cell .* (cell .!= 1.0)
-    phantom .= phantom .* (nucleus .== 1.0) + nucleus .* (nucleus .!= 1.0)
-
-    return phantom
+    return Medium(perm_array, permittivity_bg)
 end
 
 # Typical cell parameters
-cell = cell_phantom(
+medium_cell = cell_phantom_medium(
     solver.grid_size,
     1.38^2,  # Nucleus: n=1.38
     1.36^2,  # Cytoplasm: n=1.36
     20.0,    # Cell radius: 20 grid points
-    8.0      # Nucleus radius: 8 grid points
+    8.0,     # Nucleus radius: 8 grid points
+    1.33^2   # Water background
 )
 ```
 
@@ -424,9 +437,10 @@ cell = cell_phantom(
 
 ```julia
 # Waveguide structure
-function waveguide_phantom(grid_size, core_permittivity, cladding_permittivity,
-                          core_width, core_height)
-    phantom = cladding_permittivity * ones(ComplexF64, grid_size)
+function waveguide_phantom_medium(grid_size, core_permittivity, cladding_permittivity,
+                                 core_width, core_height)
+    # Start with cladding
+    perm_array = fill(Complex{Float64}(cladding_permittivity), grid_size)
 
     nx, ny, nz = grid_size
     cx, cy = div(nx, 2), div(ny, 2)
@@ -435,12 +449,13 @@ function waveguide_phantom(grid_size, core_permittivity, cladding_permittivity,
     x_range = (cx - div(core_width, 2)):(cx + div(core_width, 2))
     y_range = (cy - div(core_height, 2)):(cy + div(core_height, 2))
 
-    phantom[x_range, y_range, :] .= core_permittivity
+    perm_array[x_range, y_range, :] .= core_permittivity
 
-    return phantom
+    # Use cladding as background
+    return Medium(perm_array, cladding_permittivity)
 end
 
-waveguide = waveguide_phantom(
+medium_waveguide = waveguide_phantom_medium(
     solver.grid_size,
     1.45^2,  # Core: n=1.45
     1.44^2,  # Cladding: n=1.44
@@ -449,4 +464,4 @@ waveguide = waveguide_phantom(
 )
 ```
 
-These phantom utilities provide the foundation for electromagnetic simulations, enabling users to model complex geometries and material distributions with ease.
+These phantom utilities provide the foundation for electromagnetic simulations, enabling users to model complex geometries and material distributions with ease. All phantom functions return `Medium` objects that are directly compatible with the solver's `solve()` function.

@@ -11,17 +11,25 @@ Tests geometric phantom creation and material property assignment.
         permittivity_bead = 1.4607^2  # SiO2
         radius_pixels = 10  # 0.5 micron at 50nm resolution
 
-        phantom = phantom_bead(
+        medium = phantom_bead(
             grid_size,
             [permittivity_bead],  # Single bead permittivity as vector
-            radius_pixels
+            radius_pixels,
+            permittivity_bg = permittivity_bg
         )
 
+        # Test Medium type
+        @test medium isa Medium
+        @test FrequencyMaxwell.grid_size(medium) == grid_size
+        @test FrequencyMaxwell.permittivity_bg(medium) ≈ permittivity_bg
+
+        # Get permittivity array from medium
+        phantom = FrequencyMaxwell.permittivity(medium)
         @test size(phantom) == grid_size
 
-        # Test that background is properly set (phantom_bead uses 1.0 as background)
-        @test phantom[1, 1, 1] ≈ 1.0
-        @test phantom[end, end, end] ≈ 1.0
+        # Test that background is properly set
+        @test phantom[1, 1, 1] ≈ permittivity_bg
+        @test phantom[end, end, end] ≈ permittivity_bg
 
         # Test that center contains bead material
         center = (
@@ -39,17 +47,23 @@ Tests geometric phantom creation and material property assignment.
         grid_size = (21, 50, 50)  # Smaller for testing
         permittivity_list = [1.4338^2, (2.9734 + 0.0467im)^2, 1.6380^2]  # PDMS, TiO2, SU8
         thickness_pixels = [4, 15]  # Layer thicknesses
+        permittivity_bg = 1.0
 
         # Use phantom_plate for single layer test (simplified from multi-layer)
-        phantom = phantom_plate(
+        medium = phantom_plate(
             grid_size,
             [permittivity_list[2]],  # Use middle material (TiO2)
-            thickness_pixels[1]      # Use first thickness
+            thickness_pixels[1],      # Use first thickness
+            permittivity_bg = permittivity_bg
         )
 
-        @test size(phantom) == grid_size
+        # Test Medium type
+        @test medium isa Medium
+        @test FrequencyMaxwell.grid_size(medium) == grid_size
+        @test FrequencyMaxwell.permittivity_bg(medium) ≈ permittivity_bg
 
-        # Test that plate is created (simplified test for single layer)
+        # Get permittivity array
+        phantom = FrequencyMaxwell.permittivity(medium)
         @test size(phantom) == grid_size
 
         # Test that phantom has the expected material in the center region
@@ -67,26 +81,29 @@ Tests geometric phantom creation and material property assignment.
 
         # Test real permittivity (lossless)
         permittivity_real = 2.25  # n = 1.5
-        phantom_real = phantom_bead(
-            grid_size, [permittivity_real], 8
+        medium_real = phantom_bead(
+            grid_size, [permittivity_real], 8, permittivity_bg = 1.0
         )
+        phantom_real = FrequencyMaxwell.permittivity(medium_real)
         @test all(real.(phantom_real) .≥ 1.0)
         @test all(imag.(phantom_real) .== 0.0)
 
         # Test complex permittivity (lossy)
         permittivity_complex = 2.25 + 0.1im  # Lossy material
-        phantom_complex = phantom_bead(
-            grid_size, [permittivity_complex], 8
+        medium_complex = phantom_bead(
+            grid_size, [permittivity_complex], 8, permittivity_bg = 1.0
         )
+        phantom_complex = FrequencyMaxwell.permittivity(medium_complex)
         center = (17, 17, 17)
         @test real(phantom_complex[center...]) ≈ 2.25
         @test imag(phantom_complex[center...]) ≈ 0.1
 
         # Test high contrast materials
         permittivity_high = 16.0  # n = 4.0, high index
-        phantom_high = phantom_bead(
-            grid_size, [permittivity_high], 5
+        medium_high = phantom_bead(
+            grid_size, [permittivity_high], 5, permittivity_bg = 1.0
         )
+        phantom_high = FrequencyMaxwell.permittivity(medium_high)
         @test maximum(real.(phantom_high)) ≈ 16.0
     end
 
@@ -94,30 +111,41 @@ Tests geometric phantom creation and material property assignment.
         grid_size = (20, 20, 20)
 
         # Test very small bead
-        phantom_small = phantom_bead(
-            grid_size, [2.0], 1
+        medium_small = phantom_bead(
+            grid_size, [2.0], 1, permittivity_bg = 1.0
         )
+        phantom_small = FrequencyMaxwell.permittivity(medium_small)
         @test count(x -> abs(x - 2.0) < 1e-10, phantom_small) ≥ 1
 
         # Test bead larger than grid (should be truncated)
-        phantom_large = phantom_bead(
-            grid_size, [2.0], 15
+        medium_large = phantom_bead(
+            grid_size, [2.0], 15, permittivity_bg = 1.0
         )
+        phantom_large = FrequencyMaxwell.permittivity(medium_large)
         @test count(x -> abs(x - 2.0) < 1e-10, phantom_large) >
               count(x -> abs(x - 1.0) < 1e-10, phantom_large)
     end
 
     @testset "Basic API Tests" begin
         @testset "Phantom Bead API" begin
-            # Test the phantom_bead function from the existing API
+            # Test the phantom_bead function with Medium return type
             grid_size = (32, 32, 32)
             permittivity_profile = [1.46^2]  # SiO2 (single value for single bead)
             radius_pixels = 5
+            permittivity_bg = 1.33^2  # Water
 
-            phantom = phantom_bead(grid_size, permittivity_profile, radius_pixels)
+            medium = phantom_bead(grid_size, permittivity_profile, radius_pixels,
+                permittivity_bg = permittivity_bg)
 
+            # Test Medium properties
+            @test medium isa Medium
+            @test FrequencyMaxwell.grid_size(medium) == grid_size
+            @test FrequencyMaxwell.permittivity_bg(medium) ≈ permittivity_bg
+
+            # Test permittivity array
+            phantom = FrequencyMaxwell.permittivity(medium)
             @test size(phantom) == grid_size
-            @test phantom[1, 1, 1] ≈ 1.0  # Background (default is 1.0)
+            @test phantom[1, 1, 1] ≈ permittivity_bg  # Background
 
             # Test that center has bead permittivity
             center = div.(grid_size, 2) .+ 1
@@ -126,17 +154,26 @@ Tests geometric phantom creation and material property assignment.
         end
 
         @testset "Phantom Plate API" begin
-            # Test layered structure with correct API - simplified test
+            # Test layered structure with Medium return type
             grid_size = (20, 20, 20)
             permittivity_profile = [2.0]  # Single material for plate
             thickness_pixels = 8  # Single thickness value
+            permittivity_bg = 1.0
 
-            phantom = phantom_plate(grid_size, permittivity_profile, thickness_pixels)
+            medium = phantom_plate(grid_size, permittivity_profile, thickness_pixels,
+                permittivity_bg = permittivity_bg)
 
+            # Test Medium properties
+            @test medium isa Medium
+            @test FrequencyMaxwell.grid_size(medium) == grid_size
+            @test FrequencyMaxwell.permittivity_bg(medium) ≈ permittivity_bg
+
+            # Test permittivity array
+            phantom = FrequencyMaxwell.permittivity(medium)
             @test size(phantom) == grid_size
 
             # Test that phantom was created (not checking exact values due to implementation details)
-            @test !all(phantom .== 1.0)  # Should have some variation from background
+            @test !all(phantom .== permittivity_bg)  # Should have some variation from background
             @test maximum(real.(phantom)) ≥ 1.0  # Should have material with permittivity ≥ 1
         end
     end

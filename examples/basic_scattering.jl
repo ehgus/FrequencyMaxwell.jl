@@ -25,7 +25,6 @@ function main()
     )
 
     solver = ConvergentBornSolver(
-        permittivity_bg = 1.333^2, # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (128, 128, 64),           # 128×128×64 grid
         boundary_conditions = (               # Periodic in XY, absorbing in Z
@@ -39,7 +38,6 @@ function main()
     )
 
     println("Configuration:")
-    println("  Background n: $(sqrt(solver.permittivity_bg))")
     println("  Grid size: $(solver.grid_size)")
     println("  Resolution: $(solver.resolution .* 1e9) nm")
     println("  Domain size: $(domain_size(solver) .* 1e6) μm")
@@ -65,14 +63,16 @@ function main()
     # Create a spherical bead phantom (smaller for more realistic scattering)
     println("\nGenerating phantom...")
     bead_radius_pixels = 10.0  # 500 nm radius (10 pixels * 50 nm)
+    permittivity_bg = 1.333^2 # Water background (n=1.333)
     phantom = phantom_bead(
         solver.grid_size,
         [1.46^2],                  # SiO2 bead (n=1.46, realistic optical material)
         bead_radius_pixels        # 500 nm radius
+        ; permittivity_bg
     )
 
     # Calculate phantom statistics
-    bead_volume = count(real.(phantom) .> 1.1)  # Voxels with elevated permittivity
+    bead_volume = count(real.(permittivity(phantom)) .> permittivity_bg)  # Voxels with elevated permittivity
     total_volume = prod(solver.grid_size)
     volume_fraction = bead_volume / total_volume
 
@@ -81,7 +81,7 @@ function main()
     println("  Bead radius: $(bead_radius_pixels * solver.resolution[1] * 1e9) nm")
     println("  Volume fraction: $(round(volume_fraction * 100, digits=2))%")
 
-    heatmap(abs.(phantom[div(size(phantom, 1), 2), :, :]))
+    heatmap(abs.(permittivity(phantom)[div(solver.grid_size[1], 2), :, :]))
 
     # Solve the electromagnetic scattering problem
     println("\nSolving electromagnetic scattering...")
