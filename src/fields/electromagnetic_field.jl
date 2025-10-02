@@ -87,7 +87,7 @@ function ElectromagneticField(
         Efield::AbstractArray{Complex{T}},
         Hfield::AbstractArray{Complex{T}},
         grid_size::NTuple{3, Int},
-        resolution::NTuple{3, <:Real},
+        resolution::NTuple{3, Real},
         wavelength::Real
 ) where {T <: AbstractFloat}
 

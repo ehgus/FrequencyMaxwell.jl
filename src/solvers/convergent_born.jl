@@ -41,7 +41,7 @@ for streamlined usage while maintaining high performance and AD compatibility.
 ```julia
 ConvergentBornSolver(;
     permittivity_bg::Real = 1.0,
-    resolution::NTuple{3, <:Real},
+    resolution::NTuple{3, Real},
     grid_size::NTuple{3, Int},
     boundary_conditions::Union{AbstractBoundaryCondition, NTuple{3, <:AbstractBoundaryCondition}},
     device::Symbol = :cpu,
@@ -184,7 +184,7 @@ end
 Public keyword-argument constructor for ConvergentBornSolver with boundary condition support.
 
 # Required Arguments
-- `resolution::NTuple{3, <:Real}`: Spatial resolution (dx, dy, dz) in meters
+- `resolution::NTuple{3, Real}`: Spatial resolution (dx, dy, dz) in meters
 - `grid_size::NTuple{3, Int}`: Grid dimensions (Nx, Ny, Nz)
 - `boundary_conditions`: Either a single `AbstractBoundaryCondition` (applied to all dimensions)
   or `NTuple{3, AbstractBoundaryCondition}` for per-dimension control
@@ -232,7 +232,7 @@ solver = ConvergentBornSolver(
 """
 function ConvergentBornSolver(;
         permittivity_bg::Real = 1.0,
-        resolution::NTuple{3, <:Real},
+        resolution::NTuple{3, Real},
         grid_size::NTuple{3, Int},
         boundary_conditions,  # Accept any tuple or single boundary condition
         iterations_max::Int = -1,

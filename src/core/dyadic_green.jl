@@ -66,8 +66,8 @@ struct DyadicGreen{T <: Real}
     """
     function DyadicGreen(
             backend::Backend, arr_size::NTuple{3, <:Integer},
-            k_square::Number, resolution::NTuple{3, <:Real},
-            boundary_conditions::Tuple{Vararg{<:AbstractBoundaryCondition, 3}})
+            k_square::Number, resolution::NTuple{3, Real},
+            boundary_conditions::NTuple{3, AbstractBoundaryCondition})
         # Extract subpixel shifts from boundary conditions
         shifts = ntuple(3) do i
             subpixel_shift(boundary_conditions[i])
@@ -159,7 +159,7 @@ Internal method: Apply a single Green's function convolution with specified subp
 This performs the core convolution operation in Fourier space without averaging.
 """
 function _apply_single_convolution!(green::DyadicGreen, src::AbstractArray,
-        shifts::NTuple{3, <:Real})
+        shifts::NTuple{3, Real})
     # Phase ramp for subpixel boundary conditions
     _multiply_phase_ramp!(src, shifts, false)
 
@@ -223,7 +223,7 @@ end
 """
 Internal: Launch dyadic Green's function multiplication kernel with specified shift.
 """
-function _multiply_Green!(green::DyadicGreen, src::AbstractArray, shifts::NTuple{3, <:Real})
+function _multiply_Green!(green::DyadicGreen, src::AbstractArray, shifts::NTuple{3, Real})
     freq_res = green.freq_res
     k_square = green.k_square
 
@@ -268,7 +268,7 @@ end
 """
 Internal: Apply phase ramp for subpixel boundary condition handling with specified shift.
 """
-function _multiply_phase_ramp!(arr::AbstractArray, shifts::NTuple{3, <:Real}, do_reverse::Bool)
+function _multiply_phase_ramp!(arr::AbstractArray, shifts::NTuple{3, Real}, do_reverse::Bool)
     # Get backend and launch kernel
     backend = get_backend(arr)
     kernel! = multiply_phase_ramp_kernel!(backend, 64)
