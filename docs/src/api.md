@@ -23,7 +23,6 @@ Utility functions for working with solver parameters.
 ```@docs
 domain_size
 grid_spacing
-wavenumber_background
 ```
 
 ### Boundary Conditions

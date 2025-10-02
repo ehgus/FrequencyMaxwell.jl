@@ -19,7 +19,6 @@ for streamlined usage while maintaining high performance and AD compatibility.
 - `T<:AbstractFloat`: Floating-point precision type
 
 # Configuration Fields
-- `wavelength::T`: Wavelength in the background medium (meters)
 - `permittivity_bg::T`: Background relative permittivity
 - `resolution::NTuple{3, T}`: Spatial resolution (dx, dy, dz) in meters
 - `grid_size::NTuple{3, Int}`: Number of grid points (Nx, Ny, Nz)
@@ -41,7 +40,6 @@ for streamlined usage while maintaining high performance and AD compatibility.
 # Constructor
 ```julia
 ConvergentBornSolver(;
-    wavelength::Real,
     permittivity_bg::Real = 1.0,
     resolution::NTuple{3, <:Real},
     grid_size::NTuple{3, Int},
@@ -60,7 +58,6 @@ bc_absorbing = AbsorbingBoundaryCondition(
     sharpness = 0.9
 )
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32),
@@ -70,7 +67,6 @@ solver = ConvergentBornSolver(
 
 # Mixed boundary conditions (periodic in x,y, absorbing in z)
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     boundary_conditions = (
         PeriodicBoundaryCondition(),
         PeriodicBoundaryCondition(),
@@ -92,7 +88,6 @@ This eliminates hardcoded boundary logic and enables flexible boundary configura
 mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
                AbstractElectromagneticSolver{T}
     # Configuration fields
-    wavelength::T
     permittivity_bg::T
     resolution::NTuple{3, T}
     grid_size::NTuple{3, Int}
@@ -118,7 +113,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     solver_state::Any  # LinearSolve.jl solver state
 
     function ConvergentBornSolver{T}(
-            wavelength::T,
             permittivity_bg::T,
             resolution::NTuple{3, T},
             grid_size::NTuple{3, Int},
@@ -130,7 +124,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             backend::Backend
     ) where {T <: AbstractFloat}
         # Validate parameters
-        wavelength > 0 || throw(ArgumentError("wavelength must be positive"))
         permittivity_bg > 0 || throw(ArgumentError("permittivity_bg must be positive"))
         all(resolution .> 0) ||
             throw(ArgumentError("all resolution components must be positive"))
@@ -164,7 +157,7 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
 
         new{T}(
             # Configuration fields
-            wavelength, permittivity_bg, resolution, grid_size,
+            permittivity_bg, resolution, grid_size,
             boundary_conditions,  # NEW: Store boundary conditions directly
             iterations_max, tolerance, linear_solver, preconditioner,
             # Solver state fields
@@ -191,7 +184,6 @@ end
 Public keyword-argument constructor for ConvergentBornSolver with boundary condition support.
 
 # Required Arguments
-- `wavelength::Real`: Wavelength in background medium (meters)
 - `resolution::NTuple{3, <:Real}`: Spatial resolution (dx, dy, dz) in meters
 - `grid_size::NTuple{3, Int}`: Grid dimensions (Nx, Ny, Nz)
 - `boundary_conditions`: Either a single `AbstractBoundaryCondition` (applied to all dimensions)
@@ -214,7 +206,6 @@ bc = AbsorbingBoundaryCondition(
     sharpness = 0.9
 )
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32),
@@ -223,7 +214,6 @@ solver = ConvergentBornSolver(
 
 # Mixed boundaries: periodic in x,y, absorbing in z
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32),
     boundary_conditions = (
@@ -235,14 +225,12 @@ solver = ConvergentBornSolver(
 
 # GPU acceleration with CUDA
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     boundary_conditions = bc,
     device = :cuda
 )
 ```
 """
 function ConvergentBornSolver(;
-        wavelength::Real,
         permittivity_bg::Real = 1.0,
         resolution::NTuple{3, <:Real},
         grid_size::NTuple{3, Int},
@@ -254,7 +242,6 @@ function ConvergentBornSolver(;
         device::Symbol = :cpu)
     # Determine floating-point type from inputs (promote to highest precision)
     T = promote_type(
-        typeof(float(wavelength)),
         typeof(float(permittivity_bg)),
         typeof(float(first(resolution))),
         typeof(float(tolerance))
@@ -278,7 +265,6 @@ function ConvergentBornSolver(;
 
     # Call internal constructor with converted types
     return ConvergentBornSolver{T}(
-        T(wavelength),
         T(permittivity_bg),
         T.(resolution),
         grid_size,
@@ -591,7 +577,8 @@ function LinearSolve.solve(
         throw(ArgumentError("permittivity size $(size(permittivity)) must match grid_size $(solver.grid_size)"))
 
     # Initialize solver state (computes potential V with proper padding)
-    _initialize_solver!(solver, permittivity)
+    wavelength = source_wavelength(sources)
+    _initialize_solver!(solver, permittivity, wavelength)
 
     # Generate incident field
     incident_field = generate_incident_field(sources, solver)
@@ -604,7 +591,7 @@ function LinearSolve.solve(
     source_term = to_device(solver.backend, source_term)
 
     # Solve scattering equation using CBS algorithm
-    scattered_field = _solve_cbs_scattering(solver, source_term)
+    scattered_field = _solve_cbs_scattering(solver, source_term, wavelength)
 
     # Transfer to host, add incident field, and crop to ROI
     total_field = to_host(scattered_field) + incident_field
@@ -630,14 +617,15 @@ automatically include boundary attenuation without redundant mask applications.
 """
 function _initialize_solver!(
         solver::ConvergentBornSolver{T},
-        permittivity::AbstractArray{<:Number, 3}
+        permittivity::AbstractArray{<:Number, 3},
+        wavelength::Number
 ) where {T <: AbstractFloat}
 
     # Store original permittivity
     solver.permittivity = Complex{T}.(permittivity)
 
     # Compute potential V = k²(ε/ε_bg - 1) with proper padding
-    k_bg_medium = T(2π) * sqrt(solver.permittivity_bg) / solver.wavelength
+    k_bg_medium = T(2π) * sqrt(solver.permittivity_bg) / wavelength
     potential_unpadded = Complex{T}.(k_bg_medium^2 *
                                      (permittivity ./ solver.permittivity_bg .-
                                       1))
@@ -712,7 +700,8 @@ and leverages the user-configured LinearSolver algorithm for efficient solution.
 """
 function _solve_cbs_scattering(
         solver::ConvergentBornSolver{T},
-        source::AbstractArray{Complex{T}, 4}
+        source::AbstractArray{Complex{T}, 4},
+        wavelength::Number
 ) where {T <: AbstractFloat}
 
     # Prepare right-hand side: Field_0 from first CBS iteration
@@ -773,13 +762,13 @@ function _solve_cbs_scattering(
     end
 
     # Compute magnetic field using same method as iterative version
-    Hfield = _compute_magnetic_field(solver, Efield)
+    Hfield = _compute_magnetic_field(solver, Efield, wavelength)
 
     # Get padded grid size from potential
     padded_grid_size = size(solver.potential)
 
     # Return ElectromagneticField (device-resident)
-    return ElectromagneticField(Efield, Hfield, padded_grid_size, solver.resolution, solver.wavelength)
+    return ElectromagneticField(Efield, Hfield, padded_grid_size, solver.resolution, wavelength)
 end
 
 """
@@ -792,7 +781,8 @@ where k₀ is the free-space wave number and Z₀ = 377 Ω is the impedance.
 """
 function _compute_magnetic_field(
         solver::ConvergentBornSolver{T},
-        Efield::AbstractArray{Complex{T}, 4}
+        Efield::AbstractArray{Complex{T}, 4},
+        wavelength::Number
 ) where {T <: AbstractFloat}
 
     # Create curl operator for field with padding
@@ -803,7 +793,7 @@ function _compute_magnetic_field(
     Hfield = conv(curl_op, Efield)
 
     # Apply scaling: H = -i * λ/(2π * Z₀) * ∇ × E
-    scaling_factor = Complex{T}(0, -1) * solver.wavelength / (T(2π) * T(377))
+    scaling_factor = Complex{T}(0, -1) * wavelength / (T(2π) * T(377))
 
     return scaling_factor .* Hfield
 end
@@ -983,12 +973,10 @@ Custom display for solver objects with status information.
 """
 function Base.show(io::IO, solver::ConvergentBornSolver{T}) where {T}
     print(io, "ConvergentBornSolver{$T}:")
-    print(io, "\n  wavelength: $(solver.wavelength)")
     print(io, "\n  permittivity_bg: $(solver.permittivity_bg)")
     print(io, "\n  resolution: $(solver.resolution)")
     print(io, "\n  grid_size: $(solver.grid_size)")
     print(io, "\n  domain_size: $(domain_size(solver))")
-    print(io, "\n  k₀: $(wavenumber_background(solver))")
 
     # Display boundary conditions
     bc_x = solver.boundary_conditions[1]
@@ -1028,11 +1016,3 @@ function domain_size(solver::ConvergentBornSolver{T}) where {T}
     return ntuple(i -> solver.grid_size[i] * solver.resolution[i], 3)
 end
 
-"""
-    wavenumber_background(solver::ConvergentBornSolver) -> T
-
-Calculate the background medium wavenumber k₀ = 2π√(εᵦ)/λ₀.
-"""
-function wavenumber_background(solver::ConvergentBornSolver{T}) where {T}
-    return T(2π) * sqrt(solver.permittivity_bg) / solver.wavelength
-end

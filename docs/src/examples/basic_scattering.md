@@ -24,7 +24,6 @@ function basic_scattering_example()
     # Step 1: Create electromagnetic solver with integrated configuration
     println("Creating solver with streamlined API...")
     solver = ConvergentBornSolver(
-        wavelength = 532e-9,          # 532 nm (green laser)
         permittivity_bg = 1.333^2,    # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (128, 128, 64),   # 6.4 × 6.4 × 3.2 μm domain
@@ -34,7 +33,6 @@ function basic_scattering_example()
     )
 
     println("Configuration:")
-    println("  Wavelength: $(solver.wavelength * 1e9) nm")
     println("  Background n: $(sqrt(solver.permittivity_bg))")
     println("  Grid size: $(solver.grid_size)")
     println("  Domain size: $(domain_size(solver) .* 1e6) μm")
@@ -42,7 +40,7 @@ function basic_scattering_example()
     # Step 2: Define the incident plane wave source
     println("Setting up plane wave source...")
     source = PlaneWaveSource(
-        wavelength = solver.wavelength,
+        wavelength = 532e-9,          # 532 nm (green laser)
         polarization = [1.0, 0.0, 0.0],  # X-polarized light
         k_vector = [0.0, 0.0, 1.0],      # Propagating in +Z direction
         amplitude = 1.0                   # 1 V/m amplitude
@@ -124,7 +122,6 @@ The `ConvergentBornSolver` defines all physical and numerical parameters:
 
 ```julia
 solver = ConvergentBornSolver(
-    wavelength = 532e-9,          # Physical wavelength in vacuum
     permittivity_bg = 1.333^2,    # Background relative permittivity
     resolution = (50e-9, 50e-9, 50e-9),  # Voxel size
     grid_size = (128, 128, 64),   # Number of grid points
@@ -135,7 +132,6 @@ solver = ConvergentBornSolver(
 ```
 
 **Key considerations**:
-- **Wavelength**: Always specify vacuum wavelength (532 nm for green laser)
 - **Resolution**: 50 nm provides ~10 points per wavelength in water
 - **Grid size**: Large enough to contain the object with adequate boundary padding
 - **Background permittivity**: εᵣ = n² = 1.333² ≈ 1.77 for water
@@ -144,7 +140,6 @@ solver = ConvergentBornSolver(
 ### 2. Electromagnetic Solving
 
 The solver object contains:
-- All configuration parameters directly accessible (e.g., `solver.wavelength`)
 - Preallocated arrays for efficient field computation
 - Green's function operators
 - LinearSolve.jl integration components
@@ -153,7 +148,7 @@ The solver object contains:
 
 ```julia
 source = PlaneWaveSource(
-    wavelength = solver.wavelength,
+    wavelength = 532e-9,          # 532 nm (green laser)
     polarization = [1.0, 0.0, 0.0],  # Linear polarization
     k_vector = [0.0, 0.0, 1.0],      # Propagation direction
     amplitude = 1.0                   # Field amplitude
@@ -290,7 +285,6 @@ phantom_dual = phantom1 .* (phantom2 .== 1.0) + phantom2 .* (phantom2 .!= 1.0)
 ```julia
 # Use Float32 for memory efficiency on large problems
 solver_optimized = ConvergentBornSolver(
-    wavelength = 532e-9,
     permittivity_bg = 1.333^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (256, 256, 128),  # Larger problem
@@ -310,7 +304,6 @@ If the solver doesn't converge:
 ```julia
 # Try different linear solver
 solver = ConvergentBornSolver(
-    wavelength = 532e-9,
     permittivity_bg = 1.333^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -327,7 +320,6 @@ For large problems:
 ```julia
 # Reduce grid size during development
 solver = ConvergentBornSolver(
-    wavelength = 532e-9,
     permittivity_bg = 1.333^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (64, 64, 32),  # Smaller for testing

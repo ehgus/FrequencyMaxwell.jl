@@ -46,7 +46,6 @@ function test_two_beam_interference_homogeneous()
     )
 
     solver = ConvergentBornSolver(
-        wavelength = 532e-9,           # 532 nm
         permittivity_bg = 1.333^2,     # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (201, 201, 191),   # Matching MATLAB grid
@@ -61,17 +60,17 @@ function test_two_beam_interference_homogeneous()
     )
 
     println("✓ Solver configured with:")
-    println("  Wavelength: $(solver.wavelength*1e9) nm")
     println("  Background permittivity: $(solver.permittivity_bg)")
     println("  Grid size: $(solver.grid_size)")
     println("  Domain size: $(domain_size(solver) .* 1e6) μm")
 
     # Create two-beam sources (matching MATLAB illum_order = 3)
     illum_order = 3
+    wavelength = 532e-9 # 532 nm
+    k_bg = T(2π) * sqrt(solver.permittivity_bg) / wavelength
     ky = 2π * illum_order / (solver.grid_size[2] * solver.resolution[2])
 
     # Calculate propagation angle
-    k_bg = wavenumber_background(solver)
     angle = asin(ky / k_bg)
 
     println("✓ Two-beam configuration:")
@@ -81,14 +80,14 @@ function test_two_beam_interference_homogeneous()
 
     # Create plane wave sources with opposite horizontal angles
     source1 = PlaneWaveSource(
-        wavelength = solver.wavelength,
+        wavelength = 532e-9,           # 532 nm
         polarization = [1.0, 0.0, 0.0],  # X-polarized
         k_vector = [0.0, sin(angle), cos(angle)],  # +angle beam
         amplitude = 1.0
     )
 
     source2 = PlaneWaveSource(
-        wavelength = solver.wavelength,
+        wavelength = 532e-9,           # 532 nm
         polarization = [1.0, 0.0, 0.0],  # X-polarized
         k_vector = [0.0, -sin(angle), cos(angle)], # -angle beam
         amplitude = 1.0
@@ -96,11 +95,7 @@ function test_two_beam_interference_homogeneous()
 
     sources = [source1, source2]
 
-    # Validate source configuration
     println("✓ Sources created:")
-    for (i, src) in enumerate(sources)
-        println("  Source $(i): k = $(src.k_vector), λ = $(src.wavelength*1e9) nm")
-    end
 
     # Homogeneous medium (water everywhere)
     permittivity = fill(solver.permittivity_bg, solver.grid_size)

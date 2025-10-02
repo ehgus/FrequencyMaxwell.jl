@@ -25,7 +25,6 @@ function main()
     )
 
     solver = ConvergentBornSolver(
-        wavelength = 532e-9,      # 532 nm (green laser)
         permittivity_bg = 1.333^2, # Water background (n=1.333)
         resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
         grid_size = (128, 128, 64),           # 128×128×64 grid
@@ -40,7 +39,6 @@ function main()
     )
 
     println("Configuration:")
-    println("  Wavelength: $(solver.wavelength * 1e9) nm")
     println("  Background n: $(sqrt(solver.permittivity_bg))")
     println("  Grid size: $(solver.grid_size)")
     println("  Resolution: $(solver.resolution .* 1e9) nm")
@@ -49,7 +47,7 @@ function main()
     # Define the incident plane wave source
     println("Setting up plane wave source...")
     source = PlaneWaveSource(
-        wavelength = solver.wavelength,
+        wavelength = 532e-9,      # 532 nm (green laser)
         polarization = [1.0, 0.0, 0.0],    # X-polarized
         k_vector = [0.0, 0.0, 1.0],        # Propagating in +Z
         amplitude = 1.0                     # 1 V/m amplitude

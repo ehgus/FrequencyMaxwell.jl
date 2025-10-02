@@ -244,7 +244,6 @@ end
         bc = PeriodicBoundaryCondition()
 
         solver = ConvergentBornSolver(
-            wavelength = 500e-9,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (32, 32, 16),
             boundary_conditions = bc
@@ -263,7 +262,6 @@ end
         )
 
         solver = ConvergentBornSolver(
-            wavelength = 500e-9,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (32, 32, 16),
             boundary_conditions = (bc_periodic, bc_periodic, bc_absorbing)
@@ -282,7 +280,6 @@ end
         )
 
         solver = ConvergentBornSolver(
-            wavelength = 500e-9,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (32, 32, 16),
             boundary_conditions = bc

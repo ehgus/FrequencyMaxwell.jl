@@ -30,7 +30,6 @@ using FrequencyMaxwell
 
 # Step 1: Create solver with integrated configuration
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,          # 500 nm wavelength (green light)
     permittivity_bg = 1.33^2,     # Water background (n = 1.33)
     resolution = (50e-9, 50e-9, 50e-9),  # 50 nm voxel size
     grid_size = (128, 128, 32),   # 6.4 × 6.4 × 1.6 μm computational domain
@@ -40,7 +39,7 @@ solver = ConvergentBornSolver(
 
 # Step 2: Define electromagnetic source
 source = PlaneWaveSource(
-    wavelength = solver.wavelength,
+    wavelength = 500e-9,          # 500 nm wavelength (green light)
     polarization = [1.0, 0.0, 0.0],  # x-polarized light
     k_vector = [0.0, 0.0, 1.0],      # propagating in +z direction
     amplitude = 1.0                   # unit amplitude
@@ -105,7 +104,6 @@ Enable GPU acceleration by specifying the `device` parameter:
 ```julia
 # Using NVIDIA GPU (requires CUDA.jl)
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32),
@@ -125,7 +123,6 @@ FrequencyMaxwell.jl leverages the LinearSolve.jl ecosystem for maximum flexibili
 ```julia
 # Example: Using a different linear solver algorithm
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),

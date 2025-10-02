@@ -82,7 +82,6 @@ using FrequencyMaxwell
 
 # Create electromagnetic solver with streamlined API
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,          # 500 nm wavelength (green light)
     permittivity_bg = 1.33^2,     # Water background (n=1.33)
     resolution = (50e-9, 50e-9, 50e-9),  # 50 nm isotropic resolution
     grid_size = (128, 128, 64),           # Computational grid size
@@ -91,7 +90,7 @@ solver = ConvergentBornSolver(
 
 # Define incident plane wave source
 source = PlaneWaveSource(
-    wavelength = solver.wavelength,
+    wavelength = 500e-9,          # 500 nm wavelength (green light)
     polarization = [1.0, 0.0, 0.0],    # X-polarized light
     k_vector = [0.0, 0.0, 1.0],        # Propagating in +Z direction
     amplitude = 1.0                     # 1 V/m amplitude
@@ -120,7 +119,6 @@ using FrequencyMaxwell
 
 # Enable GPU acceleration (requires CUDA.jl for NVIDIA GPUs)
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (256, 256, 128),  # Larger problem for GPU
@@ -129,7 +127,7 @@ solver = ConvergentBornSolver(
 
 # Same API as CPU - device handling is automatic
 source = PlaneWaveSource(
-    wavelength = solver.wavelength,
+    wavelength = 500e-9,
     polarization = [1.0, 0.0, 0.0],
     k_vector = [0.0, 0.0, 1.0]
 )
@@ -150,7 +148,7 @@ function objective(phantom_params)
     phantom = phantom_bead(config.grid_size, phantom_params, 16.0)
     Efield, Hfield = solve(solver, source, phantom)
     fields = ElectromagneticField(Efield, Hfield, config.grid_size, 
-                                 config.resolution, config.wavelength)
+                                 config.resolution, source.wavelength)
     return field_energy(fields)  # Minimize total energy
 end
 

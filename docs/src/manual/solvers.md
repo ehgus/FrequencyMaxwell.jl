@@ -27,7 +27,6 @@ Where:
 
 ```julia
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32),
@@ -44,9 +43,9 @@ The solver type integrates:
 
 The solver combines configuration and state in a single object:
 
-- **Direct field access**: `solver.wavelength`, `solver.grid_size`, etc.
+- **Direct field access**: `solver.grid_size`, etc.
 - **Type-safe validation**: All parameters validated during construction
-- **Utility functions**: `domain_size(solver)`, `wavenumber_background(solver)`
+- **Utility functions**: `domain_size(solver)`
 
 This design provides:
 - Simplified API with single solver object
@@ -112,7 +111,6 @@ Example configuration:
 using LinearSolve
 
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -159,7 +157,6 @@ The solver uses Float64 by default. All parameters are automatically type-promot
 ```julia
 # Default Float64 precision
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -213,7 +210,6 @@ If convergence issues occur:
 ```julia
 # Try BiCGStabL instead of KrylovJL_GMRES
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -225,7 +221,6 @@ solver = ConvergentBornSolver(
 2. **Adjust tolerance**:
 ```julia
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -237,7 +232,6 @@ solver = ConvergentBornSolver(
 3. **Try different grid resolution**:
 ```julia
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (75e-9, 75e-9, 75e-9),  # Coarser resolution
     grid_size = (96, 96, 48),             # Smaller problem size
@@ -254,7 +248,6 @@ Solver state can be reused across multiple solves:
 
 ```julia
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),

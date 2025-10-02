@@ -25,7 +25,6 @@ using FrequencyMaxwell
 
 # Create solver with streamlined API (recommended)
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32)
@@ -33,7 +32,7 @@ solver = ConvergentBornSolver(
 
 # Define source
 source = PlaneWaveSource(
-    wavelength = solver.config.wavelength,
+    wavelength = 500e-9,
     polarization = [1.0, 0.0, 0.0],
     k_vector = [0.0, 0.0, 1.0]
 )
@@ -93,7 +92,6 @@ export
 # Configuration utilities
       domain_size,
       grid_spacing,
-      wavenumber_background,
 
 # Source utilities
       source_wavelength,

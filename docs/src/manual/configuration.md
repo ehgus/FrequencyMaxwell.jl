@@ -12,7 +12,6 @@ The `ConvergentBornSolver` contains all physical and numerical parameters needed
 using FrequencyMaxwell
 
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64)
@@ -22,13 +21,6 @@ solver = ConvergentBornSolver(
 ### Complete Parameter Reference
 
 #### Physical Parameters
-
-**`wavelength`** (required)
-- **Type**: `T <: AbstractFloat`
-- **Description**: Wavelength of electromagnetic radiation in vacuum
-- **Units**: Meters
-- **Validation**: Must be positive (`wavelength > 0`)
-- **Example**: `500e-9` for 500 nm green light
 
 **`permittivity_bg`** (required)
 - **Type**: `T <: AbstractFloat`
@@ -123,7 +115,6 @@ bc = AbsorbingBoundaryCondition(
 ```julia
 # Different boundaries per dimension
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -149,9 +140,6 @@ domain = domain_size(solver)  # Returns (Lx, Ly, Lz) in meters
 
 # Get voxel spacing (same as resolution)
 spacing = grid_spacing(solver)  # Returns (dx, dy, dz) in meters
-
-# Get background wavenumber
-k0 = wavenumber_background(solver)  # Returns k₀ = 2π/λ in rad/m
 ```
 
 ### Validation and Type Promotion
@@ -165,7 +153,6 @@ The configuration system automatically:
 ```julia
 # This automatically promotes Int to Float64
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 2,        # Int promoted to Float64
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -190,7 +177,6 @@ bc_absorbing = AbsorbingBoundaryCondition(
 )
 
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (256, 256, 128),
@@ -214,7 +200,6 @@ For high-resolution simulations with large grids:
 
 ```julia
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (25e-9, 25e-9, 25e-9),  # Higher resolution
     grid_size = (256, 256, 128),          # Larger grids
@@ -228,7 +213,6 @@ For large simulations, consider memory-efficient configurations:
 
 ```julia
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (512, 512, 256),
@@ -243,7 +227,6 @@ For applications requiring high numerical accuracy:
 
 ```julia
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -262,7 +245,6 @@ using LinearSolve
 
 # Different solver algorithms
 solver_gmres = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -272,7 +254,6 @@ solver_gmres = ConvergentBornSolver(
 )
 
 solver_bicgstab = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 64),
@@ -292,7 +273,6 @@ solver_bicgstab = ConvergentBornSolver(
 
 ### Parameter Selection Guidelines
 
-- **Wavelength**: Use the vacuum wavelength of your electromagnetic source
 - **Resolution**: Choose 10-20 points per wavelength in the background medium
 - **Grid size**: Ensure objects of interest are well-sampled and boundaries are far enough
 - **Tolerance**: `1e-6` for most applications, `1e-8` for high-precision work
@@ -309,7 +289,6 @@ The solver has custom `show` methods for clear REPL display:
 
 ```julia
 julia> solver = ConvergentBornSolver(
-           wavelength=500e-9,
            permittivity_bg=1.77,
            resolution=(50e-9, 50e-9, 50e-9),
            grid_size=(128, 128, 64),
@@ -318,7 +297,6 @@ julia> solver = ConvergentBornSolver(
 
 ConvergentBornSolver{Float64}:
   Physical parameters:
-    wavelength: 5.0e-7 m
     permittivity_bg: 1.77
     resolution: (5.0e-8, 5.0e-8, 5.0e-8) m
     grid_size: (128, 128, 64)

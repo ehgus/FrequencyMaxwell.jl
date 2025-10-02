@@ -17,7 +17,6 @@ using FrequencyMaxwell
 
 # Create solver with integrated configuration
 solver = ConvergentBornSolver(
-    wavelength = 500e-9,
     permittivity_bg = 1.33^2,
     resolution = (50e-9, 50e-9, 50e-9),
     grid_size = (128, 128, 32)
@@ -25,7 +24,7 @@ solver = ConvergentBornSolver(
 
 # Create source using direct field access
 source = PlaneWaveSource(
-    wavelength = solver.wavelength,
+    wavelength = 500e-9,
     polarization = [1.0, 0.0, 0.0],
     k_vector = [0.0, 0.0, 1.0]
 )

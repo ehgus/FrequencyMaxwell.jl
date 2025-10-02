@@ -7,7 +7,6 @@ Tests electromagnetic source generation and field initialization.
     @testset "Plane Wave Source" begin
         # Test basic plane wave source - matches original examples
         solver = ConvergentBornSolver(
-            wavelength = 532e-9,
             permittivity_bg = 1.333^2,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (64, 64, 32),
@@ -16,12 +15,11 @@ Tests electromagnetic source generation and field initialization.
 
         # Test plane wave propagating in z-direction
         source = PlaneWaveSource(
-            wavelength = solver.wavelength,
+            wavelength = 532e-9,
             polarization = [1.0, 0.0, 0.0],  # x-polarized
             k_vector = [0.0, 0.0, 1.0]  # z-direction
         )
 
-        @test source.wavelength ≈ solver.wavelength
         @test source.polarization[1] ≈ 1.0
         @test source.polarization[2] ≈ 0.0
         @test source.polarization[3] ≈ 0.0
@@ -44,7 +42,6 @@ Tests electromagnetic source generation and field initialization.
 
     @testset "Source Polarization" begin
         solver = ConvergentBornSolver(
-            wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 16),
@@ -53,7 +50,7 @@ Tests electromagnetic source generation and field initialization.
 
         # Test x-polarization
         source_x = PlaneWaveSource(
-            wavelength = solver.wavelength,
+            wavelength = 500e-9,
             polarization = [1.0, 0.0, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
@@ -62,7 +59,7 @@ Tests electromagnetic source generation and field initialization.
 
         # Test y-polarization
         source_y = PlaneWaveSource(
-            wavelength = solver.wavelength,
+            wavelength = 500e-9,
             polarization = [0.0, 1.0, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
@@ -71,7 +68,7 @@ Tests electromagnetic source generation and field initialization.
 
         # Test circular polarization
         source_circ = PlaneWaveSource(
-            wavelength = solver.wavelength,
+            wavelength = 500e-9,
             polarization = [1.0, 1.0im, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
@@ -84,7 +81,6 @@ Tests electromagnetic source generation and field initialization.
 
     @testset "Oblique Incidence" begin
         solver = ConvergentBornSolver(
-            wavelength = 355e-9,  # UV wavelength from grating example
             permittivity_bg = 1.0,
             resolution = (10e-9, 10e-9, 10e-9),
             grid_size = (20, 50, 50),
@@ -99,7 +95,7 @@ Tests electromagnetic source generation and field initialization.
             k_normalized = k_vec ./ norm(k_vec)
 
             source = PlaneWaveSource(
-                wavelength = solver.wavelength,
+                wavelength = 355e-9,  # UV wavelength from grating example
                 polarization = [1.0, 0.0, 0.0],
                 k_vector = k_normalized
             )
@@ -123,7 +119,6 @@ Tests electromagnetic source generation and field initialization.
 
     @testset "Source Field Properties" begin
         solver = ConvergentBornSolver(
-            wavelength = 633e-9,
             permittivity_bg = 1.33^2,
             resolution = (50e-9, 50e-9, 50e-9),
             grid_size = (32, 32, 32),
@@ -131,7 +126,7 @@ Tests electromagnetic source generation and field initialization.
         )
 
         source = PlaneWaveSource(
-            wavelength = solver.wavelength,
+            wavelength = 633e-9,
             polarization = [1.0, 0.0, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
@@ -167,7 +162,6 @@ Tests electromagnetic source generation and field initialization.
 
     @testset "Multiple Sources" begin
         solver = ConvergentBornSolver(
-            wavelength = 500e-9,
             permittivity_bg = 1.0,
             resolution = (100e-9, 100e-9, 100e-9),
             grid_size = (32, 32, 32),
@@ -176,9 +170,9 @@ Tests electromagnetic source generation and field initialization.
 
         # Create multiple sources for coherent superposition
         sources = [
-            PlaneWaveSource(wavelength = solver.wavelength, polarization = [1.0, 0.0, 0.0],
+            PlaneWaveSource(wavelength = 500e-9, polarization = [1.0, 0.0, 0.0],
                 k_vector = [0.0, 0.0, 1.0]),
-            PlaneWaveSource(wavelength = solver.wavelength, polarization = [0.0, 1.0, 0.0],
+            PlaneWaveSource(wavelength = 500e-9, polarization = [0.0, 1.0, 0.0],
                 k_vector = [0.0, 0.0, 1.0])
         ]
 
