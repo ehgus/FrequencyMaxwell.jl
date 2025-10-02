@@ -782,8 +782,7 @@ function _compute_magnetic_field(
 ) where {T <: AbstractFloat}
 
     # Create curl operator for field with padding
-    array_type = typeof(Efield)
-    curl_op = Curl(array_type, T, size(Efield)[1:3], solver.resolution)
+    curl_op = Curl(size(Efield)[1:3], solver.resolution)
 
     # Compute curl of E field
     Hfield = conv(curl_op, Efield)

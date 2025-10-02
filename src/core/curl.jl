@@ -8,38 +8,31 @@ for electromagnetic field analysis.
 using FFTW
 
 """
-    Curl{T}
+    Curl
 
 Curl operator for electromagnetic fields.
 
 # Fields
-- `array_type::Type{<:AbstractArray}`: Array type for hardware flexibility
-- `precision::Type{<:Real}`: Floating-point precision type
-- `freq_res::NTuple{3, T}`: Frequency resolution for each dimension
+- `freq_res::NTuple{3, Real}`: Frequency resolution for each dimension
 """
-struct Curl{T <: Real}
-    array_type::Type{<:AbstractArray}
-    precision::Type{<:Real}
-    freq_res::NTuple{3, T}
+struct Curl
+    freq_res::NTuple{3, Real}
 end
 
 """
-    Curl(array_type, precision, arr_size, resolution)
+    Curl(arr_size, resolution)
 
 Construct a curl operator.
 
 # Arguments
-- `array_type`: Array type (Array, CuArray, etc.)
-- `precision`: Floating-point precision (Float32, Float64)
 - `arr_size`: Domain size (nx, ny, nz)
 - `resolution`: Spatial resolution (dx, dy, dz)
 """
-function Curl(array_type::Type, precision::Type, arr_size::NTuple{3, <:Integer},
+function Curl(arr_size::NTuple{3, <:Integer},
         resolution::NTuple{3, <:Real})
-    T = precision <: Real ? precision : Float64
     # Calculate frequency resolution
     freq_res = 2π ./ (arr_size .* resolution)
-    return Curl{T}(array_type, precision, T.(freq_res))
+    return Curl(freq_res)
 end
 
 """
