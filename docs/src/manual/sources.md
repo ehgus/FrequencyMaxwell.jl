@@ -297,7 +297,9 @@ function FrequencyMaxwell.generate_incident_field(source::MyCustomSource, solver
     # Extract grid parameters from solver
     grid_size = solver.grid_size
     resolution = solver.resolution
-    padding = solver.boundary_thickness_pixel
+    padding = ntuple(3) do i
+        padding_pixels(solver.boundary_conditions[i], resolution[i])
+    end
     padded_grid_size = grid_size .+ 2 .* padding
 
     # Generate E and H field arrays on padded grid

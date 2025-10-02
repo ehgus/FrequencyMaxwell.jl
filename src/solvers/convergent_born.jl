@@ -80,7 +80,6 @@ solver = ConvergentBornSolver(
 The solver now uses the boundary condition abstraction:
 - Padding pixels calculated from boundary conditions via `padding_pixels()`
 - Subpixel shifts extracted via `subpixel_shift()`
-- Field attenuation applied via `apply_attenuation!()`
 - Green's function averaging controlled via `requires_averaging()`
 
 This eliminates hardcoded boundary logic and enables flexible boundary configurations.
@@ -103,8 +102,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     potential::Union{Nothing, AbstractArray}  # V = k²(ε/ε_bg - 1) with padding
     potential_device::Union{Nothing, AbstractArray}  # Device-resident potential
     permittivity::Union{Nothing, AbstractArray}  # Original permittivity without padding
-    boundary_thickness_pixel::NTuple{3, Int}  # Derived from boundary conditions
-    field_attenuation_pixel::NTuple{3, Int}   # Derived from boundary conditions
     ROI::NTuple{6, Int}  # Region of interest bounds
     eps_imag::T  # Imaginary part for convergence
     Bornmax::Int  # Actual number of iterations to use
@@ -136,18 +133,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             padding_pixels(boundary_conditions[i], resolution[i])
         end
 
-        # Calculate field attenuation pixels from boundary conditions
-        # For AbsorbingBoundaryCondition, use attenuation_thickness
-        # For PeriodicBoundaryCondition, use 0
-        field_attenuation_pixel = ntuple(3) do i
-            bc = boundary_conditions[i]
-            if bc isa AbsorbingBoundaryCondition
-                round(Int, bc.attenuation_thickness / (resolution[i] * 2))
-            else
-                0
-            end
-        end
-
         # Calculate region of interest
         ROI = (
             boundary_thickness_pixel[1] + 1, boundary_thickness_pixel[1] + grid_size[1],
@@ -166,8 +151,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             nothing,  # potential - set during solve
             nothing,  # potential_device - set during solve
             nothing,  # permittivity - set during solve
-            boundary_thickness_pixel,  # Derived from boundary conditions
-            field_attenuation_pixel,   # Derived from boundary conditions
             ROI,
             T(0),     # eps_imag - calculated based on potential
             0,        # Bornmax - calculated automatically
@@ -631,12 +614,10 @@ function _initialize_solver!(
                                       1))
 
     # Pad the potential (replicate boundary values)
-    try
-        solver.potential = _pad_array(potential_unpadded, solver.boundary_thickness_pixel, :replicate)
-    catch e
-        error("The Pad_array information: $(solver.boundary_thickness_pixel) // $(size(potential_unpadded))")
-        throw(e)
+    boundary_thickness_pixel = ntuple(3) do i
+        padding_pixels(solver.boundary_conditions[i], solver.resolution[i])
     end
+    solver.potential = _pad_array(potential_unpadded, boundary_thickness_pixel, :replicate)
 
     # Calculate eps_imag based on maximum potential value for numerical stability
     solver.eps_imag = max(T(2^-20), maximum(abs.(solver.potential)) * T(1.01))
@@ -901,8 +882,9 @@ function _apply_attenuation_to_potential!(solver::ConvergentBornSolver{T}) where
 
         # For absorbing boundaries, apply attenuation along this dimension
         if bc isa AbsorbingBoundaryCondition
-            max_L = solver.boundary_thickness_pixel[dim]
-            L = min(max_L, solver.field_attenuation_pixel[dim])
+            max_L = padding_pixels(bc, solver.resolution[dim])
+            attenuation_pixel = round(Int, bc.attenuation_thickness / (resolution[i] * 2))
+            L = min(max_L, attenuation_pixel)
 
             if max_L == 0
                 continue

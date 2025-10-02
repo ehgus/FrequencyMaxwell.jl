@@ -272,24 +272,4 @@ end
         @test solver.boundary_conditions[2] isa PeriodicBoundaryCondition
         @test solver.boundary_conditions[3] isa AbsorbingBoundaryCondition
     end
-
-    @testset "Boundary Condition Derived Fields" begin
-        bc = AbsorbingBoundaryCondition(
-            thickness = 2.0e-6,
-            attenuation_thickness = 1.5e-6
-        )
-
-        solver = ConvergentBornSolver(
-            resolution = (50e-9, 50e-9, 50e-9),
-            grid_size = (32, 32, 16),
-            boundary_conditions = bc
-        )
-
-        # Test that derived fields are computed correctly
-        expected_padding = round(Int, 2.0e-6 / (50e-9 * 2))
-        @test all(solver.boundary_thickness_pixel .== expected_padding)
-
-        expected_attenuation = round(Int, 1.5e-6 / (50e-9 * 2))
-        @test all(solver.field_attenuation_pixel .== expected_attenuation)
-    end
 end

@@ -168,7 +168,7 @@ to ensure consistent field phases.
 
 # Arguments
 - `source::PlaneWaveSource{T}`: Plane wave source configuration
-- `solver`: Solver object containing grid configuration (grid_size, resolution, permittivity_bg, boundary_thickness_pixel)
+- `solver`: Solver object containing grid configuration (grid_size, resolution, permittivity_bg)
 
 # Returns
 - `ElectromagneticField{T}`: Electromagnetic field on padded grid
@@ -188,7 +188,9 @@ function generate_incident_field(
     grid_size = solver.grid_size  # Original computational grid
     resolution = solver.resolution
     permittivity_bg = solver.permittivity_bg
-    padding = solver.boundary_thickness_pixel
+    padding = ntuple(3) do i
+        padding_pixels(solver.boundary_conditions[i], resolution[i])
+    end
 
     # Compute padded grid size
     padded_grid_size = grid_size .+ 2 .* padding

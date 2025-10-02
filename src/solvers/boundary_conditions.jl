@@ -23,7 +23,6 @@ All boundary conditions must implement:
 - `padding_pixels(bc, resolution)` - calculate padding needed in pixels
 - `subpixel_shift(bc)` - return Green's function subpixel shift
 - `requires_padding(bc)` - whether this boundary needs array padding
-- `apply_attenuation!(bc, potential, params)` - apply field attenuation masks
 
 # Example
 
@@ -78,11 +77,6 @@ All concrete boundary condition types must implement:
 
 - `requires_padding(bc::AbstractBoundaryCondition) -> Bool`
   Whether this boundary condition requires array padding.
-
-### Action Methods (may modify state):
-- `apply_attenuation!(bc::AbstractBoundaryCondition, potential, params...) -> Nothing`
-  Apply field attenuation masks to the potential array.
-  For boundaries without attenuation (e.g., periodic), this is a no-op.
 
 # Implementation Notes
 
@@ -154,9 +148,6 @@ bc = PeriodicBoundaryCondition{Float64}()
 shift = subpixel_shift(bc)      # Returns 0.0
 needs_pad = requires_padding(bc)  # Returns false
 padding = padding_pixels(bc, 50e-9)  # Returns 0
-
-# Apply attenuation (no-op for periodic)
-apply_attenuation!(bc, potential, params...)  # Does nothing
 ```
 
 # See Also
@@ -327,10 +318,6 @@ bc_exp = AbsorbingBoundaryCondition(
 shift = subpixel_shift(bc)           # Returns 0.25
 needs_pad = requires_padding(bc)     # Returns true
 padding = padding_pixels(bc, 50e-9)  # Returns 40 pixels (2μm / 50nm)
-
-# Apply attenuation to potential
-apply_attenuation!(bc, potential, boundary_thickness_pixel,
-                  field_attenuation_pixel, ROI)
 ```
 
 # Performance Considerations
@@ -668,151 +655,6 @@ function _create_attenuation_window(profile::AttenuationProfile, L::Int, ::Type{
     else
         error("Unknown attenuation profile: $profile")
     end
-end
-
-# Interface Implementation - Action Methods
-
-"""
-    apply_attenuation!(
-        bc::AbstractBoundaryCondition,
-        potential::AbstractArray{<:Number, 3},
-        boundary_thickness_pixel::NTuple{3, Int},
-        field_attenuation_pixel::NTuple{3, Int},
-        ROI::NTuple{6, Int}
-    ) -> Nothing
-
-Apply field attenuation masks to the potential array for boundary condition enforcement.
-
-Field attenuation prevents electromagnetic field reflections from computational
-domain boundaries by smoothly reducing field amplitudes near edges. This method
-modifies the potential array in-place, applying dimension-specific attenuation
-profiles.
-
-# Arguments
-- `bc::AbstractBoundaryCondition`: Boundary condition instance
-- `potential::AbstractArray{<:Number, 3}`: Potential array V (will be modified in-place)
-- `boundary_thickness_pixel::NTuple{3, Int}`: Boundary padding in pixels per dimension
-- `field_attenuation_pixel::NTuple{3, Int}`: Attenuation layer thickness in pixels per dimension
-- `ROI::NTuple{6, Int}`: Region of interest bounds (x_min, x_max, y_min, y_max, z_min, z_max)
-
-# Method Implementations
-
-## PeriodicBoundaryCondition
-No-op (does nothing). Periodic boundaries don't attenuate fields.
-
-## AbsorbingBoundaryCondition
-Applies tanh-based attenuation masks dimension-by-dimension:
-
-### Algorithm (per dimension):
-1. Calculate attenuation layer size: `L = min(max_L, attenuation_thickness_pixel)`
-2. Create tanh window: `window = [tanh(x) - tanh(-2.5)] / 2` for x ∈ [-2.5, 2.5]
-3. Apply sharpness: `window = sharpness * window + (1 - sharpness)`
-4. Create full 1D filter: `[window, ones(ROI_size), reverse(window)]`
-5. Broadcast multiply along dimension: `potential .*= filter_1d`
-
-### Attenuation Profile:
-```
-          ┌─────────────────────────┐
-          │   Region of Interest    │
-    ┌─────┼─────────────────────────┼─────┐
-    │Atten│                         │Atten│
-    └─────┴─────────────────────────┴─────┘
-    ↑                                      ↑
-    0.0                                    1.0
-    (fully attenuated)                     (no attenuation)
-```
-
-# Example
-```julia
-# Setup
-potential = Complex{Float64}.(randn(100, 100, 100))
-boundary_thickness_pixel = (20, 20, 20)
-field_attenuation_pixel = (15, 15, 15)
-ROI = (21, 80, 21, 80, 21, 80)
-
-# Periodic boundary - no change
-bc_p = PeriodicBoundaryCondition{Float64}()
-apply_attenuation!(bc_p, potential, boundary_thickness_pixel,
-                  field_attenuation_pixel, ROI)
-# potential is unchanged
-
-# Absorbing boundary - applies attenuation
-bc_a = AbsorbingBoundaryCondition(
-    thickness = 2.0e-6,
-    attenuation_thickness = 1.5e-6,
-    sharpness = 0.9
-)
-apply_attenuation!(bc_a, potential, boundary_thickness_pixel,
-                  field_attenuation_pixel, ROI)
-# potential now has smooth attenuation near boundaries
-```
-
-# Performance Notes
-- Operates dimension-by-dimension for memory efficiency
-- No intermediate mask arrays stored (computed and applied directly)
-- GPU-compatible through broadcasting
-- Tanh computation is vectorized
-
-# See Also
-- `AbsorbingBoundaryCondition`: Boundary type with attenuation
-- `PeriodicBoundaryCondition`: Boundary type without attenuation
-"""
-function apply_attenuation!(
-        bc::PeriodicBoundaryCondition,
-        potential::AbstractArray{<:Number, 3},
-        boundary_thickness_pixel::NTuple{3, Int},
-        field_attenuation_pixel::NTuple{3, Int},
-        ROI::NTuple{6, Int}
-)
-    # Periodic boundaries don't attenuate fields - this is a no-op
-    return nothing
-end
-
-function apply_attenuation!(
-        bc::AbsorbingBoundaryCondition{T},
-        potential::AbstractArray{<:Number, 3},
-        boundary_thickness_pixel::NTuple{3, Int},
-        field_attenuation_pixel::NTuple{3, Int},
-        ROI::NTuple{6, Int}
-) where {T}
-    # Apply attenuation dimension-by-dimension
-    for dim in 1:3
-        max_L = boundary_thickness_pixel[dim]
-        L = min(max_L, field_attenuation_pixel[dim])
-
-        if max_L == 0
-            continue
-        end
-
-        # Create attenuation window using selected profile
-        window = _create_attenuation_window(bc.profile, L, T)
-
-        # Apply sharpness factor
-        # sharpness = 1.0: use full window (sharp transition)
-        # sharpness = 0.0: use all ones (no attenuation)
-        window = window .* bc.sharpness .+ (1 - bc.sharpness)
-
-        # Create full 1D filter with attenuation on both ends
-        roi_size = ROI[2 * dim] - ROI[2 * dim - 1] + 1
-        remaining_padding = max_L - L
-
-        filter_1d = vcat(
-            window,                              # Left attenuation
-            ones(T, roi_size + 2 * remaining_padding),  # ROI (no attenuation)
-            reverse(window)                      # Right attenuation
-        )
-
-        # Apply 1D filter along the specified dimension via broadcasting
-        if dim == 1
-            potential .*= reshape(filter_1d, :, 1, 1)
-        elseif dim == 2
-            potential .*= reshape(filter_1d, 1, :, 1)
-        else  # dim == 3
-            potential .*= reshape(filter_1d, 1, 1, :)
-        end
-    end
-
-    return nothing
 end
 
 # Type Conversion Utilities
