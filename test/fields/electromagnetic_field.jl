@@ -12,11 +12,10 @@ Tests field construction, utilities, and domain properties.
         resolution = (100e-9, 100e-9, 200e-9)
         wavelength = 500e-9
 
-        EMfield = ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
+        EMfield = ElectromagneticField(Efield, Hfield, resolution, wavelength)
 
         @test size(EMfield.E) == (32, 32, 16, 3)
         @test size(EMfield.H) == (32, 32, 16, 3)
-        @test EMfield.grid_size == grid_size
         @test EMfield.resolution == resolution
         @test EMfield.wavelength ≈ wavelength
     end
@@ -25,11 +24,10 @@ Tests field construction, utilities, and domain properties.
         # Create test fields with correct constructor
         Efield = ones(ComplexF64, 16, 16, 8, 3) * 0.1
         Hfield = ones(ComplexF64, 16, 16, 8, 3) * 0.01
-        grid_size = (16, 16, 8)
         resolution = (50e-9, 50e-9, 100e-9)
         wavelength = 633e-9
 
-        EMfield = ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
+        EMfield = ElectromagneticField(Efield, Hfield, resolution, wavelength)
 
         # Test energy calculation
         energy = field_energy(EMfield)
@@ -49,11 +47,10 @@ Tests field construction, utilities, and domain properties.
     @testset "Field Domain Properties" begin
         Efield = rand(ComplexF64, 20, 30, 10, 3)
         Hfield = rand(ComplexF64, 20, 30, 10, 3)
-        grid_size = (20, 30, 10)
         resolution = (25e-9, 40e-9, 80e-9)
         wavelength = 500e-9
 
-        EMfield = ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
+        EMfield = ElectromagneticField(Efield, Hfield, resolution, wavelength)
 
         domain = domain_size(EMfield)
         @test domain[1] ≈ 20 * 25e-9

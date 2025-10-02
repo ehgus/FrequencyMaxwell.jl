@@ -262,7 +262,6 @@ function generate_incident_field(
     return ElectromagneticField(
         E_incident,
         H_incident,
-        padded_grid_size,
         resolution,
         source.wavelength
     )

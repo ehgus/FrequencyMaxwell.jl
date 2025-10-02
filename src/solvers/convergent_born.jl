@@ -441,8 +441,8 @@ The preconditioner R = (1i/ε_imag) * potential is applied separately through Li
 """
 struct CBSLinearOperator{T <: AbstractFloat}
     solver::ConvergentBornSolver{T}
-    potential_device
-    temp_array
+    potential_device::AbstractArray
+    temp_array::AbstractArray
 
     function CBSLinearOperator(
             solver::ConvergentBornSolver{T},
@@ -564,8 +564,8 @@ function LinearSolve.solve(
 
     # Initialize solver state (computes potential V with proper padding)
     wavelength = source_wavelength(sources)
-    potential, potential_device, eps_imag, Bornmax =
-        _initialize_solver!(solver, medium, wavelength)
+    potential, potential_device, eps_imag,
+    Bornmax = _initialize_solver!(solver, medium, wavelength)
 
     # Generate incident field with background permittivity
     incident_field = generate_incident_field(sources, solver,
@@ -760,11 +760,8 @@ function _solve_cbs_scattering(
     # Compute magnetic field using same method as iterative version
     Hfield = _compute_magnetic_field(solver, Efield, wavelength)
 
-    # Get padded grid size from potential
-    padded_grid_size = size(Efield)[1:3]
-
     # Return ElectromagneticField (device-resident)
-    return ElectromagneticField(Efield, Hfield, padded_grid_size, solver.resolution, wavelength)
+    return ElectromagneticField(Efield, Hfield, solver.resolution, wavelength)
 end
 
 """
@@ -900,7 +897,8 @@ function _apply_attenuation_to_potential!(
         # For absorbing boundaries, apply attenuation along this dimension
         if bc isa AbsorbingBoundaryCondition
             max_L = padding_pixels(bc, solver.resolution[dim])
-            attenuation_pixel = round(Int, bc.attenuation_thickness / (solver.resolution[dim] * 2))
+            attenuation_pixel = round(Int, bc.attenuation_thickness /
+                                           (solver.resolution[dim] * 2))
             L = min(max_L, attenuation_pixel)
 
             if max_L == 0
@@ -1011,4 +1009,3 @@ Calculate the total physical domain size in each direction.
 function domain_size(solver::ConvergentBornSolver{T}) where {T}
     return ntuple(i -> solver.grid_size[i] * solver.resolution[i], 3)
 end
-

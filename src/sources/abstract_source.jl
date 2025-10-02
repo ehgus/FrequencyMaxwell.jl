@@ -47,7 +47,7 @@ function generate_incident_field(source::MySource{T}, solver) where {T}
     # ... implementation ...
 
     # Return ElectromagneticField object
-    return ElectromagneticField(E_field, H_field, grid_size, resolution, source.wavelength)
+    return ElectromagneticField(E_field, H_field, resolution, source.wavelength)
 end
 ```
 """

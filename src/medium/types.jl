@@ -115,7 +115,7 @@ function Base.show(io::IO, medium::Medium{T}) where {T}
     println(io, "  Grid size: $(gs[1]) × $(gs[2]) × $(gs[3])")
     println(io, "  Background: εᵣ = $(round(perm_bg, digits=4)), n = $(round(n_bg, digits=4))")
     println(io, "  Permittivity range: $(round(perm_min, digits=4)) to $(round(perm_max, digits=4))")
-    print(io,   "  Refractive index range: $(round(n_min, digits=4)) to $(round(n_max, digits=4))")
+    print(io, "  Refractive index range: $(round(n_min, digits=4)) to $(round(n_max, digits=4))")
 end
 
 # Export types and functions

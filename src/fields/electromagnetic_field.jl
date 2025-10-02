@@ -20,13 +20,12 @@ components and derived quantities.
 # Fields
 - `E::AbstractArray{Complex{T}}`: Electric field array (V/m)
 - `H::AbstractArray{Complex{T}}`: Magnetic field array (A/m)
-- `grid_size::NTuple{3, Int}`: Spatial grid dimensions
 - `resolution::NTuple{3, T}`: Spatial resolution (meters)
 - `wavelength::T`: Wavelength in the medium (meters)
 
 # Constructor
 ```julia
-ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
+ElectromagneticField(Efield, Hfield, resolution, wavelength)
 ```
 
 # Example
@@ -34,11 +33,10 @@ ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
 # Create field data structure
 Efield = zeros(Complex{Float64}, 128, 128, 32, 3)  # 3D grid + 3 components
 Hfield = zeros(Complex{Float64}, 128, 128, 32, 3)
-grid_size = (128, 128, 32)
 resolution = (50e-9, 50e-9, 100e-9)  # 50nm x 50nm x 100nm voxels
 wavelength = 500e-9  # 500 nm
 
-EMfield = ElectromagneticField(Efield, Hfield, grid_size, resolution, wavelength)
+EMfield = ElectromagneticField(Efield, Hfield, resolution, wavelength)
 
 # Access field components
 Ex = EMfield.E[:, :, :, 1]  # X-component of electric field
@@ -48,14 +46,12 @@ Hy = EMfield.H[:, :, :, 2]  # Y-component of magnetic field
 struct ElectromagneticField{T <: AbstractFloat}
     E::AbstractArray{Complex{T}}
     H::AbstractArray{Complex{T}}
-    grid_size::NTuple{3, Int}
     resolution::NTuple{3, T}
     wavelength::T
 
     function ElectromagneticField{T}(
             Efield::AbstractArray{Complex{T}},
             Hfield::AbstractArray{Complex{T}},
-            grid_size::NTuple{3, Int},
             resolution::NTuple{3, T},
             wavelength::T
     ) where {T <: AbstractFloat}
@@ -66,19 +62,15 @@ struct ElectromagneticField{T <: AbstractFloat}
 
         # For 4D arrays (3D space + 3 components), check grid consistency
         if ndims(Efield) == 4
-            size(Efield)[1:3] == grid_size ||
-                throw(ArgumentError("field array spatial dimensions must match grid_size"))
             size(Efield)[4] == 3 ||
                 throw(ArgumentError("field arrays must have 3 components in last dimension"))
         end
 
         # Validate physical parameters
-        all(grid_size .> 0) ||
-            throw(ArgumentError("grid_size must have positive dimensions"))
         all(resolution .> 0) || throw(ArgumentError("resolution must be positive"))
         wavelength > 0 || throw(ArgumentError("wavelength must be positive"))
 
-        return new{T}(Efield, Hfield, grid_size, resolution, wavelength)
+        return new{T}(Efield, Hfield, resolution, wavelength)
     end
 end
 
@@ -86,7 +78,6 @@ end
 function ElectromagneticField(
         Efield::AbstractArray{Complex{T}},
         Hfield::AbstractArray{Complex{T}},
-        grid_size::NTuple{3, Int},
         resolution::NTuple{3, Real},
         wavelength::Real
 ) where {T <: AbstractFloat}
@@ -95,7 +86,7 @@ function ElectromagneticField(
     resolution_T = NTuple{3, T}(T.(resolution))
     wavelength_T = T(wavelength)
 
-    return ElectromagneticField{T}(Efield, Hfield, grid_size, resolution_T, wavelength_T)
+    return ElectromagneticField{T}(Efield, Hfield, resolution_T, wavelength_T)
 end
 
 """
@@ -104,7 +95,8 @@ end
 Calculate the total physical domain size.
 """
 function domain_size(EMfield::ElectromagneticField{T}) where {T}
-    return ntuple(i -> EMfield.grid_size[i] * EMfield.resolution[i], 3)
+    grid_size = size(EMfield.E)[1:3]
+    return ntuple(i -> grid_size[i] * EMfield.resolution[i], 3)
 end
 
 """
@@ -211,36 +203,37 @@ function extract_plane(
         plane_axis::Int,
         plane_index::Int
 ) where {T}
+    grid_size = size(EMfield.E)[1:3]
     # Ensure we have 4D arrays (3D space + 3 components)
     ndims(EMfield.E) == 4 ||
         throw(ArgumentError("extract_plane requires 4D field arrays (3D space + 3 components)"))
     1 ≤ plane_axis ≤ 3 || throw(ArgumentError("plane_axis must be 1, 2, or 3"))
-    1 ≤ plane_index ≤ EMfield.grid_size[plane_axis] ||
+    1 ≤ plane_index ≤ grid_size[plane_axis] ||
         throw(ArgumentError("plane_index out of bounds"))
 
     # Extract plane data
     if plane_axis == 1  # YZ plane
         E_plane = EMfield.E[plane_index:plane_index, :, :, :]
         H_plane = EMfield.H[plane_index:plane_index, :, :, :]
-        plane_grid_size = (1, EMfield.grid_size[2], EMfield.grid_size[3])
+        plane_grid_size = (1, grid_size[2], grid_size[3])
         plane_resolution = (
             EMfield.resolution[1], EMfield.resolution[2], EMfield.resolution[3])
     elseif plane_axis == 2  # XZ plane
         E_plane = EMfield.E[:, plane_index:plane_index, :, :]
         H_plane = EMfield.H[:, plane_index:plane_index, :, :]
-        plane_grid_size = (EMfield.grid_size[1], 1, EMfield.grid_size[3])
+        plane_grid_size = (grid_size[1], 1, grid_size[3])
         plane_resolution = (
             EMfield.resolution[1], EMfield.resolution[2], EMfield.resolution[3])
     else  # XY plane
         E_plane = EMfield.E[:, :, plane_index:plane_index, :]
         H_plane = EMfield.H[:, :, plane_index:plane_index, :]
-        plane_grid_size = (EMfield.grid_size[1], EMfield.grid_size[2], 1)
+        plane_grid_size = (grid_size[1], grid_size[2], 1)
         plane_resolution = (
             EMfield.resolution[1], EMfield.resolution[2], EMfield.resolution[3])
     end
 
     return ElectromagneticField(
-        E_plane, H_plane, plane_grid_size, plane_resolution, EMfield.wavelength)
+        E_plane, H_plane, plane_resolution, EMfield.wavelength)
 end
 
 """
@@ -258,18 +251,18 @@ total_field = scattered_field + incident_field
 """
 function Base.:+(field1::ElectromagneticField{T}, field2::ElectromagneticField{T}) where {T}
     # Validate field compatibility
-    field1.grid_size == field2.grid_size ||
-        throw(ArgumentError("Fields must have same grid_size: $(field1.grid_size) vs $(field2.grid_size)"))
+    size(field1.E) == size(field2.E) ||
+        throw(ArgumentError("Fields must have same grid size: $(size(field1.E)) vs $(size(field2.E))"))
     field1.resolution == field2.resolution ||
         throw(ArgumentError("Fields must have same resolution"))
-    isapprox(field1.wavelength, field2.wavelength, rtol=T(1e-10)) ||
+    isapprox(field1.wavelength, field2.wavelength, rtol = T(1e-10)) ||
         throw(ArgumentError("Fields must have same wavelength"))
 
     # Add E and H fields element-wise
     E_sum = field1.E .+ field2.E
     H_sum = field1.H .+ field2.H
 
-    return ElectromagneticField(E_sum, H_sum, field1.grid_size, field1.resolution, field1.wavelength)
+    return ElectromagneticField(E_sum, H_sum, field1.resolution, field1.wavelength)
 end
 
 """
@@ -303,7 +296,6 @@ function crop_to_ROI(field::ElectromagneticField{T}, solver) where {T}
     return ElectromagneticField(
         E_cropped,
         H_cropped,
-        solver.grid_size,
         solver.resolution,
         field.wavelength
     )
@@ -336,7 +328,7 @@ function to_host(field::ElectromagneticField{T}) where {T}
     copyto!(E_host, field.E)
     copyto!(H_host, field.H)
 
-    return ElectromagneticField(E_host, H_host, field.grid_size, field.resolution, field.wavelength)
+    return ElectromagneticField(E_host, H_host, field.resolution, field.wavelength)
 end
 
 """
@@ -346,7 +338,7 @@ Custom display for electromagnetic field objects.
 """
 function Base.show(io::IO, EMfield::ElectromagneticField{T}) where {T}
     print(io, "ElectromagneticField{$T}")
-    print(io, "\n  grid_size: $(EMfield.grid_size)")
+    print(io, "\n  grid_size: $(size(EMfield.E))")
     print(io, "\n  resolution: $(EMfield.resolution)")
     print(io, "\n  domain_size: $(domain_size(EMfield))")
     print(io, "\n  wavelength: $(EMfield.wavelength)")

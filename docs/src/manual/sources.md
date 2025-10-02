@@ -309,7 +309,7 @@ function FrequencyMaxwell.generate_incident_field(source::MyCustomSource, solver
     # ... fill arrays with your source-specific field computation ...
 
     # Return ElectromagneticField object
-    return ElectromagneticField(E_array, H_array, padded_grid_size, resolution, source.wavelength)
+    return ElectromagneticField(E_array, H_array, resolution, source.wavelength)
 end
 ```
 
@@ -338,7 +338,7 @@ function FrequencyMaxwell.generate_incident_field(source::GaussianBeamSource, so
     # and applying the appropriate phase and amplitude
     # ...
 
-    return ElectromagneticField(E_field, H_field, padded_grid_size, resolution, source.wavelength)
+    return ElectromagneticField(E_field, H_field, resolution, source.wavelength)
 end
 ```
 
