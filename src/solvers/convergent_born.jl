@@ -98,7 +98,6 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
     # Solver state fields
     backend::Backend  # Cached KernelAbstractions.jl backend
     Green_function::Union{Nothing, DyadicGreen{T}}
-    ROI::NTuple{6, Int}  # Region of interest bounds
     Bornmax::Int  # Actual number of iterations to use
     iteration_count::Int
     residual_history::Vector{T}
@@ -121,27 +120,14 @@ mutable struct ConvergentBornSolver{T <: AbstractFloat} <:
             throw(ArgumentError("all grid_size components must be positive"))
         0 ≤ tolerance ≤ 1 || throw(ArgumentError("tolerance must be in [0, 1]"))
 
-        # Calculate boundary thickness in pixels from boundary conditions
-        boundary_thickness_pixel = ntuple(3) do i
-            padding_pixels(boundary_conditions[i], resolution[i])
-        end
-
-        # Calculate region of interest
-        ROI = (
-            boundary_thickness_pixel[1] + 1, boundary_thickness_pixel[1] + grid_size[1],
-            boundary_thickness_pixel[2] + 1, boundary_thickness_pixel[2] + grid_size[2],
-            boundary_thickness_pixel[3] + 1, boundary_thickness_pixel[3] + grid_size[3]
-        )
-
         new{T}(
             # Configuration fields
             resolution, grid_size,
-            boundary_conditions,  # NEW: Store boundary conditions directly
+            boundary_conditions,  # Store boundary conditions directly
             iterations_max, tolerance, linear_solver, preconditioner,
             # Solver state fields
             backend,  # KernelAbstractions.jl backend (cached)
             nothing,  # Green_function - computed lazily (handles flip internally)
-            ROI,
             0,        # Bornmax - calculated automatically
             0,        # iteration_count
             T[],      # residual_history
@@ -243,6 +229,33 @@ function ConvergentBornSolver(;
         linear_solver,
         preconditioner,
         backend
+    )
+end
+
+"""
+    compute_ROI(solver::ConvergentBornSolver) -> NTuple{6, Int}
+
+Calculate region of interest bounds from solver configuration.
+
+The ROI defines the physical simulation domain after removing boundary padding.
+Bounds are returned as (x_start, x_end, y_start, y_end, z_start, z_end) in
+1-based indexing.
+
+# Example
+```julia
+ROI = compute_ROI(solver)
+# Access physical domain: field[ROI[1]:ROI[2], ROI[3]:ROI[4], ROI[5]:ROI[6]]
+```
+"""
+function compute_ROI(solver::ConvergentBornSolver)
+    boundary_thickness_pixel = ntuple(3) do i
+        padding_pixels(solver.boundary_conditions[i], solver.resolution[i])
+    end
+
+    return (
+        boundary_thickness_pixel[1] + 1, boundary_thickness_pixel[1] + solver.grid_size[1],
+        boundary_thickness_pixel[2] + 1, boundary_thickness_pixel[2] + solver.grid_size[2],
+        boundary_thickness_pixel[3] + 1, boundary_thickness_pixel[3] + solver.grid_size[3]
     )
 end
 
@@ -908,7 +921,8 @@ function _apply_attenuation_to_potential!(
             window = window .* bc.sharpness .+ (1 - bc.sharpness)
 
             # Create full filter
-            roi_size = solver.ROI[2 * dim] - solver.ROI[2 * dim - 1] + 1
+            ROI = compute_ROI(solver)
+            roi_size = ROI[2 * dim] - ROI[2 * dim - 1] + 1
             remaining_padding = max_L - L
 
             filter_1d = vcat(
@@ -935,7 +949,7 @@ end
 Crop padded field array to the region of interest.
 """
 function crop_to_ROI(field::AbstractArray{T, N}, solver::ConvergentBornSolver) where {T, N}
-    ROI = solver.ROI
+    ROI = compute_ROI(solver)
     if N == 3
         return field[ROI[1]:ROI[2], ROI[3]:ROI[4], ROI[5]:ROI[6]]
     elseif N == 4

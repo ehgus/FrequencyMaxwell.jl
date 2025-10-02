@@ -286,7 +286,8 @@ cropped_field = crop_to_ROI(padded_field, solver)
 ```
 """
 function crop_to_ROI(field::ElectromagneticField{T}, solver) where {T}
-    ROI = solver.ROI
+    # Import compute_ROI from the solver module
+    ROI = compute_ROI(solver)
 
     # Crop E and H arrays to ROI
     E_cropped = field.E[ROI[1]:ROI[2], ROI[3]:ROI[4], ROI[5]:ROI[6], :]
