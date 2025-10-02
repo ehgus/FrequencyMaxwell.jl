@@ -28,7 +28,7 @@ Tests electromagnetic source generation and field initialization.
         @test source.k_vector[3] ≈ 1.0  # z-direction
 
         # Test field generation
-        EMfield = generate_incident_fields(source, solver)
+        EMfield = generate_incident_field(source, solver)
         Efield = EMfield.E
         Hfield = EMfield.H
 
@@ -57,7 +57,7 @@ Tests electromagnetic source generation and field initialization.
             polarization = [1.0, 0.0, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
-        EMfield_x = generate_incident_fields(source_x, solver)
+        EMfield_x = generate_incident_field(source_x, solver)
         E_x, H_x = EMfield_x.E, EMfield_x.H
 
         # Test y-polarization
@@ -66,7 +66,7 @@ Tests electromagnetic source generation and field initialization.
             polarization = [0.0, 1.0, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
-        EMfield_y = generate_incident_fields(source_y, solver)
+        EMfield_y = generate_incident_field(source_y, solver)
         E_y, H_y = EMfield_y.E, EMfield_y.H
 
         # Test circular polarization
@@ -75,7 +75,7 @@ Tests electromagnetic source generation and field initialization.
             polarization = [1.0, 1.0im, 0.0],
             k_vector = [0.0, 0.0, 1.0]
         )
-        EMfield_circ = generate_incident_fields(source_circ, solver)
+        EMfield_circ = generate_incident_field(source_circ, solver)
         E_circ, H_circ = EMfield_circ.E, EMfield_circ.H
 
         # Verify orthogonality for linear polarizations
@@ -104,7 +104,7 @@ Tests electromagnetic source generation and field initialization.
                 k_vector = k_normalized
             )
 
-            EMfield = generate_incident_fields(source, solver)
+            EMfield = generate_incident_field(source, solver)
             Efield, Hfield = EMfield.E, EMfield.H
 
             # Test that fields are generated properly
@@ -136,7 +136,7 @@ Tests electromagnetic source generation and field initialization.
             k_vector = [0.0, 0.0, 1.0]
         )
 
-        EMfield = generate_incident_fields(source, solver)
+        EMfield = generate_incident_field(source, solver)
         Efield, Hfield = EMfield.E, EMfield.H
 
         # Test Maxwell's equations in source region
@@ -183,8 +183,8 @@ Tests electromagnetic source generation and field initialization.
         ]
 
         # Test that individual sources work
-        EMfield1 = generate_incident_fields(sources[1], solver)
-        EMfield2 = generate_incident_fields(sources[2], solver)
+        EMfield1 = generate_incident_field(sources[1], solver)
+        EMfield2 = generate_incident_field(sources[2], solver)
         E1, H1 = EMfield1.E, EMfield1.H
         E2, H2 = EMfield2.E, EMfield2.H
 

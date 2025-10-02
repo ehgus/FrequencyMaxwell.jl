@@ -342,7 +342,6 @@ Check results for physical consistency:
 
 ```julia
 # Verify energy conservation
-incident_power = source_power(source)
 scattered_power = field_energy(EMfield) - incident_power
 absorption = # ... calculate if materials are lossy
 

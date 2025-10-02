@@ -590,39 +590,27 @@ function LinearSolve.solve(
     size(permittivity) == solver.grid_size ||
         throw(ArgumentError("permittivity size $(size(permittivity)) must match grid_size $(solver.grid_size)"))
 
-    # Additional validation for multi-source case
-    if sources isa Vector
-        isempty(sources) && throw(ArgumentError("sources vector cannot be empty"))
-        _validate_source_compatibility(sources)
-    end
-
     # Initialize solver state (computes potential V with proper padding)
     _initialize_solver!(solver, permittivity)
 
-    # Generate incident fields (multiple dispatch handles single vs multi-source)
-    E_incident, H_incident = _generate_incident_fields_padded(solver, sources)
+    # Generate incident field
+    incident_field = generate_incident_field(sources, solver)
 
     # Generate source term: V * E_incident + i*eps_imag * E_incident
-    source_term = solver.potential .* E_incident .+
-                  Complex{T}(0, solver.eps_imag) .* E_incident
+    source_term = solver.potential .* incident_field.E .+
+                  Complex{T}(0, solver.eps_imag) .* incident_field.E
 
     # Transfer source term to device
     source_term = to_device(solver.backend, source_term)
 
     # Solve scattering equation using CBS algorithm
-    E_scattered_device, H_scattered_device = _solve_cbs_scattering(solver, source_term)
+    scattered_field = _solve_cbs_scattering(solver, source_term)
 
-    # Transfer scattered field back to host
-    E_scattered = to_host(E_scattered_device)
-    H_scattered = to_host(H_scattered_device)
+    # Transfer to host, add incident field, and crop to ROI
+    total_field = to_host(scattered_field) + incident_field
+    result_field = crop_to_ROI(total_field, solver)
 
-    # Add incident field to get total field and crop to ROI
-    Efield = crop_to_ROI(E_scattered + E_incident, solver)
-    Hfield = crop_to_ROI(H_scattered + H_incident, solver)
-
-    # Wrap in ElectromagneticField structure
-    return ElectromagneticField(Efield, Hfield, solver.grid_size,
-        solver.resolution, solver.wavelength)
+    return result_field
 end
 
 """
@@ -697,186 +685,7 @@ function _initialize_solver!(
 end
 
 """
-    _generate_incident_fields(solver::ConvergentBornSolver, source::AbstractCurrentSource)
-
-Generate incident electromagnetic fields from the current source.
-"""
-function _generate_incident_fields_padded(
-        solver::ConvergentBornSolver{T},
-        source::AbstractCurrentSource{T}
-) where {T <: AbstractFloat}
-
-    # Generate incident fields on original grid
-    grid_size = solver.grid_size
-    E_incident_orig = zeros(Complex{T}, grid_size..., 3)
-    H_incident_orig = zeros(Complex{T}, grid_size..., 3)
-
-    # Simple plane wave implementation
-    if isa(source, PlaneWaveSource)
-        _fill_plane_wave_fields!(E_incident_orig, H_incident_orig, solver, source)
-    end
-
-    # Pad incident fields to match potential array size
-    E_incident = _pad_array(E_incident_orig, solver.boundary_thickness_pixel, :zeros)
-    H_incident = _pad_array(H_incident_orig, solver.boundary_thickness_pixel, :zeros)
-
-    return E_incident, H_incident
-end
-
-"""
-    _generate_incident_fields_padded(solver::ConvergentBornSolver, sources::Vector{<:AbstractCurrentSource})
-
-Generate incident electromagnetic fields from multiple coherent sources with proper superposition.
-
-This method overload implements coherent field superposition where multiple electromagnetic sources
-interfere in the same simulation domain. The complex amplitudes are summed to produce
-the combined incident field that includes constructive and destructive interference.
-
-# Arguments
-- `solver::ConvergentBornSolver`: Configured solver instance
-- `sources::Vector{<:AbstractCurrentSource}`: Vector of coherent electromagnetic sources
-
-# Algorithm
-1. Validate source compatibility (same wavelength for coherent interference)
-2. Generate incident fields from each source independently using single-source method
-3. Coherently sum complex amplitudes: E_total = Σ E_i, H_total = Σ H_i
-
-This produces proper electromagnetic interference patterns where sources can interfere
-constructively (bright fringes) or destructively (dark fringes).
-"""
-function _generate_incident_fields_padded(
-        solver::ConvergentBornSolver{T},
-        sources::Vector{<:AbstractCurrentSource{T}}
-) where {T <: AbstractFloat}
-
-    # Initialize total field arrays (padded grid size)
-    padded_size = size(solver.potential)[1:3]
-    E_total = zeros(Complex{T}, padded_size..., 3)
-    H_total = zeros(Complex{T}, padded_size..., 3)
-
-    # Sum contributions from all sources (coherent superposition)
-    for source in sources
-        E_src, H_src = _generate_incident_fields_padded(solver, source)
-        E_total .+= E_src  # Complex amplitude addition for interference
-        H_total .+= H_src
-    end
-
-    return E_total, H_total
-end
-
-"""
-    _validate_source_compatibility(sources)
-
-Validate that multiple electromagnetic sources are compatible for coherent simulation.
-
-This function ensures that all sources in a multi-source configuration have compatible
-parameters for coherent electromagnetic simulation. The primary requirement is that
-all sources must have the same wavelength for proper interference.
-
-# Arguments
-- `sources::Vector{<:AbstractCurrentSource}`: Vector of sources to validate
-
-# Validation Checks
-1. Non-empty source vector
-2. All sources have identical wavelength (within tolerance 1e-10)
-
-# Throws
-- `ArgumentError` if sources are incompatible with detailed error message
-
-# Example
-```julia
-sources = [source1, source2, source3]
-_validate_source_compatibility(sources)  # Throws if wavelengths differ
-```
-"""
-function _validate_source_compatibility(sources::Vector{<:AbstractCurrentSource{T}}) where {T}
-    # Check for empty sources vector
-    isempty(sources) && throw(ArgumentError("sources vector cannot be empty"))
-
-    # All sources must have the same wavelength for coherent interference
-    reference_wavelength = source_wavelength(sources[1])
-    for (i, source) in enumerate(sources[2:end])
-        src_wavelength = source_wavelength(source)
-        if !isapprox(src_wavelength, reference_wavelength, rtol = T(1e-10))
-            throw(ArgumentError(
-                "All sources must have the same wavelength for coherent interference. " *
-                "Source 1 wavelength: $(reference_wavelength), " *
-                "Source $(i+1) wavelength: $(src_wavelength)"
-            ))
-        end
-    end
-
-    return nothing
-end
-
-"""
-    _fill_plane_wave_fields!(E_incident, H_incident, solver, source)
-
-Fill incident field arrays with proper plane wave solution.
-
-Computes plane wave fields with proper k-vector propagation:
-E(r) = E₀ * exp(ik·r)
-H(r) = (k × E) / (ωμ₀) = (k × E) / (k₀Z₀)
-
-The coordinate system is centered at the domain center for proper phase reference.
-"""
-function _fill_plane_wave_fields!(
-        E_incident::AbstractArray{Complex{T}, 4},
-        H_incident::AbstractArray{Complex{T}, 4},
-        solver::ConvergentBornSolver{T},
-        source::PlaneWaveSource{T}
-) where {T <: AbstractFloat}
-    grid_size = solver.grid_size
-    resolution = solver.resolution
-
-    # Wave parameters
-    k0 = T(2π / solver.wavelength)  # Free-space wave number
-    k_bg = k0 * sqrt(solver.permittivity_bg)  # Background wave number
-
-    # Normalize k-vector and polarization
-    k_hat = source.k_vector ./ norm(source.k_vector)  # Unit k-vector
-    k_vec = k_bg .* k_hat  # Full k-vector in medium
-    E0 = source.polarization ./ norm(source.polarization)  # Normalized polarization
-
-    # Ensure E ⟂ k (transversality condition)
-    E_perp = E0 .- (dot(E0, k_hat) * k_hat)  # Remove parallel component
-    E_perp = E_perp ./ norm(E_perp)  # Renormalize
-
-    # Compute H from E using H = k × E / (ωμ₀) = k × E / (k₀Z₀)
-    H_perp = cross(k_hat, E_perp) ./ T(377 / sqrt(solver.permittivity_bg))
-
-    # Calculate domain center for phase reference (consistent with PlaneWaveSource)
-    center = ntuple(i -> (grid_size[i] - 1) * resolution[i] / 2, 3)
-
-    # Compute phase array k·r for all grid points
-    for i in 1:grid_size[1], j in 1:grid_size[2], k in 1:grid_size[3]
-        # Position relative to domain center
-        r = [
-            (i - 1) * resolution[1] - center[1],
-            (j - 1) * resolution[2] - center[2],
-            (k - 1) * resolution[3] - center[3]
-        ]
-
-        # Phase: k·r + source phase offset
-        phase = dot(k_vec, r) + source.phase
-        complex_amplitude = source.amplitude * exp(im * phase)
-
-        # Set E field components
-        E_incident[i, j, k, 1] = complex_amplitude * E_perp[1]
-        E_incident[i, j, k, 2] = complex_amplitude * E_perp[2]
-        E_incident[i, j, k, 3] = complex_amplitude * E_perp[3]
-
-        # Set H field components
-        H_incident[i, j, k, 1] = complex_amplitude * H_perp[1]
-        H_incident[i, j, k, 2] = complex_amplitude * H_perp[2]
-        H_incident[i, j, k, 3] = complex_amplitude * H_perp[3]
-    end
-
-    return nothing
-end
-
-"""
-    _solve_cbs_scattering(solver, source) -> (Efield, Hfield)
+    _solve_cbs_scattering(solver, source) -> ElectromagneticField
 
 Solve the electromagnetic scattering problem using LinearSolve.jl CBS implementation.
 
@@ -884,7 +693,7 @@ This function reformulates the Convergent Born Series as a linear system (I - A)
 and leverages the user-configured LinearSolver algorithm for efficient solution.
 
 # Mathematical Foundation
-- Traditional CBS: Field_{n+1} = Field_0 + A * Field_n  
+- Traditional CBS: Field_{n+1} = Field_0 + A * Field_n
 - Reformulated: (I - A) * Field_total = Field_0
 - Where A = V * (G + G_flip)/2 * (i/ε_imag) * V
 
@@ -899,7 +708,7 @@ and leverages the user-configured LinearSolver algorithm for efficient solution.
 - `source::AbstractArray{Complex{T}, 4}`: Incident source field array (nx, ny, nz, 3)
 
 # Returns
-- `(Efield, Hfield)`: Tuple of electric and magnetic field arrays
+- `ElectromagneticField{T}`: Scattered electromagnetic field (device-resident)
 """
 function _solve_cbs_scattering(
         solver::ConvergentBornSolver{T},
@@ -966,7 +775,11 @@ function _solve_cbs_scattering(
     # Compute magnetic field using same method as iterative version
     Hfield = _compute_magnetic_field(solver, Efield)
 
-    return Efield, Hfield
+    # Get padded grid size from potential
+    padded_grid_size = size(solver.potential)
+
+    # Return ElectromagneticField (device-resident)
+    return ElectromagneticField(Efield, Hfield, padded_grid_size, solver.resolution, solver.wavelength)
 end
 
 """

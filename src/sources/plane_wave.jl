@@ -125,124 +125,6 @@ Get the wavelength of the plane wave source.
 source_wavelength(source::PlaneWaveSource) = source.wavelength
 
 """
-    source_power(source::PlaneWaveSource) -> T
-
-Calculate the power density of the plane wave (intensity).
-
-For a plane wave, this returns the time-averaged Poynting vector magnitude:
-S = (1/2) * |E|² / Z₀ where Z₀ ≈ 377 Ω is the impedance of free space.
-"""
-function source_power(source::PlaneWaveSource{T}) where {T}
-    E_magnitude_squared = norm(source.polarization)^2 * source.amplitude^2
-    Z0 = T(376.730313668)  # Impedance of free space (Ω)
-    return E_magnitude_squared / (2 * Z0)
-end
-
-"""
-    validate_source(source::PlaneWaveSource) -> Bool
-
-Validate the plane wave source parameters.
-"""
-function validate_source(source::PlaneWaveSource{T}) where {T}
-    # Check basic parameter validity
-    source.wavelength > 0 || return false
-    source.amplitude ≥ 0 || return false
-
-    # Check wave vector normalization
-    abs(norm(source.k_vector) - 1) < 1e-10 || return false
-
-    # Check transverse condition
-    E_dot_k = real(dot(source.polarization, source.k_vector))
-    abs(E_dot_k) < 1e-10 || return false
-
-    return true
-end
-
-"""
-    generate_incident_fields(source::PlaneWaveSource, grid_config) -> (Efield, Hfield)
-
-Generate incident plane wave fields on a computational grid.
-
-# Algorithm
-For a plane wave with polarization E₀ and wave vector k:
-- E(r) = E₀ * exp(ik·r + iφ)
-- H(r) = (k × E) / (μ₀ω) = (k × E) / Z₀k₀
-
-where Z₀ is the impedance of free space and k₀ = 2π/λ.
-"""
-function _generate_incident_fields_arrays(
-        source::PlaneWaveSource{T},
-        grid_config
-) where {T <: AbstractFloat}
-
-    # Extract grid parameters
-    grid_size = grid_config.grid_size
-    resolution = grid_config.resolution
-
-    # Calculate wave number in background medium
-    k0 = T(2π) * sqrt(grid_config.permittivity_bg) / source.wavelength
-    Z0 = T(376.730313668)  # Impedance of free space
-    n_bg = sqrt(grid_config.permittivity_bg)
-    Z_medium = Z0 / n_bg
-
-    # Initialize field arrays
-    Efield = zeros(Complex{T}, grid_size..., 3)
-    Hfield = zeros(Complex{T}, grid_size..., 3)
-
-    # Calculate phase array exp(ik·r)
-    phase_array = _calculate_phase_array(source, grid_config, k0)
-
-    # Calculate magnetic field polarization: H₀ = k × E₀ / Z₀
-    H_polarization = cross(source.k_vector, source.polarization) / Z_medium
-
-    # Fill field arrays
-    for component in 1:3
-        Efield[:, :, :, component] = source.amplitude * source.polarization[component] *
-                                     phase_array
-        Hfield[:, :, :, component] = source.amplitude * H_polarization[component] *
-                                     phase_array
-    end
-
-    return Efield, Hfield
-end
-
-"""
-    _calculate_phase_array(source::PlaneWaveSource, grid_config, k0) -> AbstractArray
-
-Calculate the spatial phase array exp(ik·r + iφ) for the plane wave.
-"""
-function _calculate_phase_array(
-        source::PlaneWaveSource{T},
-        grid_config,
-        k0::T
-) where {T <: AbstractFloat}
-    grid_size = grid_config.grid_size
-    resolution = grid_config.resolution
-
-    # Create coordinate arrays
-    phase_array = zeros(Complex{T}, grid_size)
-
-    # Calculate domain center for phase reference
-    center = ntuple(i -> (grid_size[i] - 1) * resolution[i] / 2, 3)
-
-    # Fill phase array
-    for k in 1:grid_size[3], j in 1:grid_size[2], i in 1:grid_size[1]
-        # Position relative to center
-        r = SVector{3, T}(
-            (i - 1) * resolution[1] - center[1],
-            (j - 1) * resolution[2] - center[2],
-            (k - 1) * resolution[3] - center[3]
-        )
-
-        # Phase: k₀(k̂·r) + φ
-        phase = k0 * dot(source.k_vector, r) + source.phase
-        phase_array[i, j, k] = exp(1im * phase)
-    end
-
-    return phase_array
-end
-
-"""
     cross(a::SVector{3}, b::SVector{3}) -> SVector{3}
 
 Cross product for 3D static vectors.
@@ -268,31 +150,102 @@ function Base.show(io::IO, source::PlaneWaveSource{T}) where {T}
     print(io, "\n  k_vector: $(source.k_vector)")
     print(io, "\n  amplitude: $(source.amplitude)")
     print(io, "\n  phase: $(source.phase)")
-    print(io, "\n  power density: $(source_power(source))")
 end
 
 """
-    generate_incident_fields(source::PlaneWaveSource, grid_config) -> ElectromagneticField
+    generate_incident_field(source::PlaneWaveSource, solver) -> ElectromagneticField
 
-Generate incident plane wave fields and return as an ElectromagneticField object.
+Generate incident plane wave field on the solver's padded computational grid.
 
-This is a convenience wrapper around the lower-level field generation function
-that returns a properly structured ElectromagneticField object.
+This function generates electromagnetic plane wave field satisfying Maxwell's equations:
+- E(r) = E₀ * exp(ik·r + iφ)
+- H(r) = (k × E) / (ωμ₀) = (k × E) / Z₀k₀
+
+The field is generated on the full padded grid (including boundary regions) because
+a plane wave physically exists everywhere in space, not just in the computational ROI.
+The phase reference center remains at the center of the original (unpadded) domain
+to ensure consistent field phases.
+
+# Arguments
+- `source::PlaneWaveSource{T}`: Plane wave source configuration
+- `solver`: Solver object containing grid configuration (grid_size, resolution, permittivity_bg, boundary_thickness_pixel)
+
+# Returns
+- `ElectromagneticField{T}`: Electromagnetic field on padded grid
+
+# Example
+```julia
+incident_field = generate_incident_field(plane_wave_source, solver)
+E_array = incident_field.E  # Access electric field array (padded)
+```
 """
-function generate_incident_fields(
+function generate_incident_field(
         source::PlaneWaveSource{T},
-        grid_config
+        solver
 ) where {T <: AbstractFloat}
 
-    # Generate field arrays
-    Efield, Hfield = _generate_incident_fields_arrays(source, grid_config)
+    # Extract grid parameters from solver
+    grid_size = solver.grid_size  # Original computational grid
+    resolution = solver.resolution
+    permittivity_bg = solver.permittivity_bg
+    padding = solver.boundary_thickness_pixel
+
+    # Compute padded grid size
+    padded_grid_size = grid_size .+ 2 .* padding
+
+    # Initialize field arrays on padded grid
+    E_incident = zeros(Complex{T}, padded_grid_size..., 3)
+    H_incident = zeros(Complex{T}, padded_grid_size..., 3)
+
+    # Wave parameters
+    k0 = T(2π / source.wavelength)  # Free-space wave number
+    k_bg = k0 * sqrt(permittivity_bg)  # Background wave number
+
+    # Normalize k-vector and polarization
+    k_hat = source.k_vector ./ norm(source.k_vector)  # Unit k-vector
+    k_vec = k_bg .* k_hat  # Full k-vector in medium
+    E0 = source.polarization ./ norm(source.polarization)  # Normalized polarization
+
+    # Ensure E ⟂ k (transversality condition)
+    E_perp = E0 .- (dot(E0, k_hat) * k_hat)  # Remove parallel component
+    E_perp = E_perp ./ norm(E_perp)  # Renormalize
+
+    # Compute H from E using H = k × E / (ωμ₀) = k × E / (k₀Z₀)
+    H_perp = cross(k_hat, E_perp) ./ T(377 / sqrt(permittivity_bg))
+
+    # Calculate domain center for phase reference (center of original unpadded domain)
+    center = ntuple(i -> (grid_size[i] - 1) * resolution[i] / 2, 3)
+
+    # Compute plane wave fields for all grid points (including padded regions)
+    for i in 1:padded_grid_size[1], j in 1:padded_grid_size[2], k in 1:padded_grid_size[3]
+        # Position relative to domain center (accounting for padding offset)
+        r = [
+            (i - 1 - padding[1]) * resolution[1] - center[1],
+            (j - 1 - padding[2]) * resolution[2] - center[2],
+            (k - 1 - padding[3]) * resolution[3] - center[3]
+        ]
+
+        # Phase: k·r + source phase offset
+        phase = dot(k_vec, r) + source.phase
+        complex_amplitude = source.amplitude * exp(im * phase)
+
+        # Set E field components
+        E_incident[i, j, k, 1] = complex_amplitude * E_perp[1]
+        E_incident[i, j, k, 2] = complex_amplitude * E_perp[2]
+        E_incident[i, j, k, 3] = complex_amplitude * E_perp[3]
+
+        # Set H field components
+        H_incident[i, j, k, 1] = complex_amplitude * H_perp[1]
+        H_incident[i, j, k, 2] = complex_amplitude * H_perp[2]
+        H_incident[i, j, k, 3] = complex_amplitude * H_perp[3]
+    end
 
     # Create ElectromagneticField object
     return ElectromagneticField(
-        Efield,
-        Hfield,
-        grid_config.grid_size,
-        grid_config.resolution,
+        E_incident,
+        H_incident,
+        padded_grid_size,
+        resolution,
         source.wavelength
     )
 end

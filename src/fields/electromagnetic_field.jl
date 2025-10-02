@@ -244,6 +244,102 @@ function extract_plane(
 end
 
 """
+    +(field1::ElectromagneticField, field2::ElectromagneticField) -> ElectromagneticField
+
+Add two electromagnetic fields element-wise.
+
+Both fields must have the same grid size, resolution, and wavelength.
+The resulting field contains the element-wise sum of E and H components.
+
+# Example
+```julia
+total_field = scattered_field + incident_field
+```
+"""
+function Base.:+(field1::ElectromagneticField{T}, field2::ElectromagneticField{T}) where {T}
+    # Validate field compatibility
+    field1.grid_size == field2.grid_size ||
+        throw(ArgumentError("Fields must have same grid_size: $(field1.grid_size) vs $(field2.grid_size)"))
+    field1.resolution == field2.resolution ||
+        throw(ArgumentError("Fields must have same resolution"))
+    isapprox(field1.wavelength, field2.wavelength, rtol=T(1e-10)) ||
+        throw(ArgumentError("Fields must have same wavelength"))
+
+    # Add E and H fields element-wise
+    E_sum = field1.E .+ field2.E
+    H_sum = field1.H .+ field2.H
+
+    return ElectromagneticField(E_sum, H_sum, field1.grid_size, field1.resolution, field1.wavelength)
+end
+
+"""
+    crop_to_ROI(field::ElectromagneticField, solver) -> ElectromagneticField
+
+Crop electromagnetic field to the region of interest (ROI) defined by solver's boundary conditions.
+
+This removes the padding that was added for boundary condition handling,
+returning only the physical simulation domain.
+
+# Arguments
+- `field::ElectromagneticField{T}`: Padded electromagnetic field
+- `solver`: Solver object containing ROI bounds
+
+# Returns
+- `ElectromagneticField{T}`: Cropped field on original grid
+
+# Example
+```julia
+cropped_field = crop_to_ROI(padded_field, solver)
+```
+"""
+function crop_to_ROI(field::ElectromagneticField{T}, solver) where {T}
+    ROI = solver.ROI
+
+    # Crop E and H arrays to ROI
+    E_cropped = field.E[ROI[1]:ROI[2], ROI[3]:ROI[4], ROI[5]:ROI[6], :]
+    H_cropped = field.H[ROI[1]:ROI[2], ROI[3]:ROI[4], ROI[5]:ROI[6], :]
+
+    # Return cropped field with original grid size
+    return ElectromagneticField(
+        E_cropped,
+        H_cropped,
+        solver.grid_size,
+        solver.resolution,
+        field.wavelength
+    )
+end
+
+"""
+    to_host(field::ElectromagneticField) -> ElectromagneticField
+
+Transfer electromagnetic field arrays from device (GPU) to host (CPU) memory.
+
+This function handles data transfer for GPU-accelerated computations,
+converting device arrays to standard Julia Arrays.
+
+# Arguments
+- `field::ElectromagneticField{T}`: Field with potentially device-resident arrays
+
+# Returns
+- `ElectromagneticField{T}`: Field with host-resident arrays
+
+# Example
+```julia
+host_field = to_host(gpu_field)
+```
+"""
+function to_host(field::ElectromagneticField{T}) where {T}
+    # Transfer E and H to host
+    E_host = Array{eltype(field.E)}(undef, size(field.E))
+    H_host = Array{eltype(field.H)}(undef, size(field.H))
+
+    copyto!(E_host, field.E)
+    copyto!(H_host, field.H)
+
+    return ElectromagneticField(E_host, H_host, field.grid_size, field.resolution, field.wavelength)
+end
+
+"""
     show(io::IO, EMfield::ElectromagneticField)
 
 Custom display for electromagnetic field objects.

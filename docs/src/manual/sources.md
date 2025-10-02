@@ -14,14 +14,8 @@ Every electromagnetic source must implement:
 # Get source wavelength
 wavelength = source_wavelength(source)
 
-# Get source power (for normalization)
-power = source_power(source)
-
-# Validate source parameters
-is_valid = validate_source(source)
-
-# Generate incident fields on a grid
-Efield, Hfield = generate_incident_fields(source, config)
+# Generate incident field on the solver's grid (returns ElectromagneticField)
+EMfield = generate_incident_field(source, solver)
 ```
 
 This interface enables:
@@ -176,24 +170,25 @@ source_tm = PlaneWaveSource(
 
 ### Field Generation
 
-The `generate_incident_fields` function creates the incident electromagnetic fields:
+The `generate_incident_field` function creates the incident electromagnetic fields:
 
 ```julia
-config = ConvergentBornConfig(...)
+solver = ConvergentBornSolver(...)
 source = PlaneWaveSource(...)
 
-# Generate fields on the computational grid
-E_inc, H_inc = generate_incident_fields(source, config)
+# Generate fields on the solver's grid (including padding)
+EMfield = generate_incident_field(source, solver)
 
-# E_inc and H_inc are ElectromagneticField objects
-println(size(E_inc.E))  # (3, nx, ny, nz) - vector field components
-println(size(H_inc.H))  # (3, nx, ny, nz) - vector field components
+# EMfield is an ElectromagneticField object
+println(size(EMfield.E))  # (nx_padded, ny_padded, nz_padded, 3) - vector field components
+println(size(EMfield.H))  # (nx_padded, ny_padded, nz_padded, 3) - vector field components
 ```
 
 The generated fields satisfy:
 - **Maxwell's equations**: ∇ × E = -iωμH, ∇ × H = iωεE
 - **Orthogonality**: E ⊥ H ⊥ k for plane waves
 - **Proper normalization**: Based on source amplitude
+- **Physical correctness**: Fields generated on full padded grid (not zero-padded)
 
 ### Validation and Error Handling
 
@@ -209,14 +204,6 @@ try
     )
 catch e
     println("Error: ", e)  # "Polarization must be perpendicular to k_vector"
-end
-
-# Manual validation
-source = PlaneWaveSource(...)
-if validate_source(source)
-    println("Source is valid")
-else
-    println("Source validation failed")
 end
 ```
 
@@ -306,19 +293,21 @@ end
 # Implement required interface methods
 FrequencyMaxwell.source_wavelength(source::MyCustomSource) = source.wavelength
 
-FrequencyMaxwell.source_power(source::MyCustomSource) = 1.0  # Or compute actual power
+function FrequencyMaxwell.generate_incident_field(source::MyCustomSource, solver)
+    # Extract grid parameters from solver
+    grid_size = solver.grid_size
+    resolution = solver.resolution
+    padding = solver.boundary_thickness_pixel
+    padded_grid_size = grid_size .+ 2 .* padding
 
-function FrequencyMaxwell.validate_source(source::MyCustomSource)
-    # Implement validation logic
-    return source.wavelength > 0
-end
+    # Generate E and H field arrays on padded grid
+    # (Implementation depends on your specific source type)
+    E_array = zeros(Complex{eltype(resolution)}, padded_grid_size..., 3)
+    H_array = zeros(Complex{eltype(resolution)}, padded_grid_size..., 3)
+    # ... fill arrays with your source-specific field computation ...
 
-function FrequencyMaxwell.generate_incident_fields(source::MyCustomSource, config::ConvergentBornConfig)
-    # Generate E and H fields for your source
-    # Return ElectromagneticField objects
-    Efield = ElectromagneticField(E_array)
-    Hfield = ElectromagneticField(H_array)
-    return Efield, Hfield
+    # Return ElectromagneticField object
+    return ElectromagneticField(E_array, H_array, padded_grid_size, resolution, source.wavelength)
 end
 ```
 
@@ -328,16 +317,26 @@ end
 struct GaussianBeamSource{T<:AbstractFloat} <: AbstractCurrentSource{T}
     wavelength::T
     beam_waist::T
-    polarization::Vector{Complex{T}}
-    focus_position::Vector{T}
-    k_vector::Vector{T}
+    polarization::SVector{3, Complex{T}}
+    focus_position::SVector{3, T}
+    k_vector::SVector{3, T}
 end
 
-function generate_incident_fields(source::GaussianBeamSource, config::ConvergentBornConfig)
-    # Implement Gaussian beam field generation
+FrequencyMaxwell.source_wavelength(source::GaussianBeamSource) = source.wavelength
+
+function FrequencyMaxwell.generate_incident_field(source::GaussianBeamSource, solver)
+    # Extract grid parameters
+    grid_size = solver.grid_size
+    resolution = solver.resolution
+    padding = solver.boundary_thickness_pixel
+    padded_grid_size = grid_size .+ 2 .* padding
+
+    # Implement Gaussian beam field generation on padded grid
     # This would involve computing the complex beam profile
     # and applying the appropriate phase and amplitude
     # ...
+
+    return ElectromagneticField(E_field, H_field, padded_grid_size, resolution, source.wavelength)
 end
 ```
 

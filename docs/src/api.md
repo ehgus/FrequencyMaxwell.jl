@@ -70,9 +70,7 @@ PlaneWaveSource
 
 ```@docs
 source_wavelength
-source_power
-validate_source
-generate_incident_fields
+generate_incident_field
 ```
 
 ## Field Utilities

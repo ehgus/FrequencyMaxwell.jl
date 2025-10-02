@@ -172,7 +172,6 @@ println("Gradient with respect to permittivity: $gradient")
 - **`PlaneWaveSource`**: Plane wave illumination source
 - **`AbstractCurrentSource`**: Base type for current sources
 - **`source_wavelength(source)`**: Extract source wavelength
-- **`source_power(source)`**: Calculate source power density
 
 ### Field Analysis
 

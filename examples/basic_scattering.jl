@@ -59,11 +59,10 @@ function main()
     println("  Wavelength: $(source_wavelength(source) * 1e9) nm")
     println("  Polarization: $(source.polarization)")
     println("  Propagation: $(source.k_vector)")
-    println("  Power density: $(source_power(source)) W/m²")
 
     # Visualize the plane wave source
-    E_incident, _ = FrequencyMaxwell._generate_incident_fields_padded(solver, source)
-    heatmap(angle.(E_incident[div(size(E_incident, 1), 2), :, :, 1]))
+    incident_field = generate_incident_field(source, solver)
+    heatmap(angle.(incident_field.E[div(size(incident_field.E, 1), 2), :, :, 1]))
 
     # Create a spherical bead phantom (smaller for more realistic scattering)
     println("\nGenerating phantom...")

@@ -6,33 +6,52 @@ must implement, providing a consistent API for field generation.
 """
 
 """
-    generate_incident_fields(source::AbstractCurrentSource, grid_config) -> (Efield, Hfield)
+    generate_incident_field(source::AbstractCurrentSource, solver) -> ElectromagneticField
 
-Generate incident electromagnetic fields for the given source on a computational grid.
+Generate incident electromagnetic field for the given source on the solver's computational grid.
+
+This is the primary interface that all source types must implement. The method generates
+incident electromagnetic field on the solver's unpadded grid. Padding for boundary
+conditions is handled separately by field generation utilities.
 
 # Arguments
 - `source::AbstractCurrentSource{T}`: Source object containing source parameters
-- `grid_config`: Grid configuration object containing spatial discretization
+- `solver`: Solver object containing grid configuration (grid_size, resolution, permittivity_bg)
 
 # Returns
-- `Efield::AbstractArray{Complex{T}, 4}`: Electric field (last dimension = 3 for components)
-- `Hfield::AbstractArray{Complex{T}, 4}`: Magnetic field (last dimension = 3 for components)
+- `ElectromagneticField{T}`: Electromagnetic field structure containing:
+  - `E::AbstractArray{Complex{T}, 4}`: Electric field (last dimension = 3 for components)
+  - `H::AbstractArray{Complex{T}, 4}`: Magnetic field (last dimension = 3 for components)
+  - Grid information (size, resolution, wavelength)
 
 # Requirements
 All concrete source types must implement this method to generate physically
-consistent electromagnetic fields satisfying Maxwell's equations.
-"""
-function generate_incident_fields end
+consistent electromagnetic fields satisfying Maxwell's equations:
+1. Fields must be generated on the unpadded grid (solver.grid_size)
+2. E and H must be properly related through Maxwell's equations
+3. Fields must satisfy appropriate physical constraints (e.g., E ⟂ k for plane waves)
+4. Return ElectromagneticField object with properly populated fields and grid info
 
-"""
-    source_power(source::AbstractCurrentSource) -> Real
+# Example Implementation
+```julia
+function generate_incident_field(source::MySource{T}, solver) where {T}
+    # Extract grid parameters
+    grid_size = solver.grid_size
+    resolution = solver.resolution
 
-Calculate the total power delivered by the electromagnetic source.
+    # Generate field arrays
+    E_field = zeros(Complex{T}, grid_size..., 3)
+    H_field = zeros(Complex{T}, grid_size..., 3)
 
-This is an optional interface that sources can implement for power normalization
-and energy conservation checks.
+    # Fill arrays with source-specific physics
+    # ... implementation ...
+
+    # Return ElectromagneticField object
+    return ElectromagneticField(E_field, H_field, grid_size, resolution, source.wavelength)
+end
+```
 """
-function source_power end
+function generate_incident_field end
 
 """
     source_wavelength(source::AbstractCurrentSource) -> Real
@@ -42,17 +61,3 @@ Get the primary wavelength of the electromagnetic source.
 All sources must have a well-defined wavelength for the electromagnetic solver.
 """
 function source_wavelength end
-
-"""
-    validate_source(source::AbstractCurrentSource) -> Bool
-
-Validate that the source parameters are physically consistent.
-
-This function checks for common issues such as:
-- Non-physical parameter values
-- Inconsistent polarization and propagation directions
-- Invalid wavelength or frequency values
-
-Returns `true` if validation passes, throws an `ArgumentError` if validation fails.
-"""
-function validate_source end

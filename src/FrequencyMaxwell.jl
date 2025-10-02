@@ -97,9 +97,8 @@ export
 
 # Source utilities
       source_wavelength,
-      source_power,
-      validate_source,
-      generate_incident_fields,
+      generate_incident_field,
+      pad_electromagnetic_field,
 
 # GPU Backend utilities
       is_backend_available
@@ -112,6 +111,7 @@ include("core/curl.jl")
 include("sources/abstract_source.jl")
 include("sources/plane_wave.jl")
 include("fields/electromagnetic_field.jl")
+include("sources/field_generation.jl")
 include("geometry/phantoms.jl")
 include("solvers/convergent_born.jl")
 
